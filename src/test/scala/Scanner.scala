@@ -6,11 +6,7 @@ class MySuite extends munit.FunSuite {
   import TokenType._
 
   def strTok(str: String, ln: Int = 1) = Token(STRING, s"'$str'", str, ln)
-  def reservedTok(tokenType: TokenType) = Token(tokenType, Token.reservedWords.find {
-    case (lexeme, maybeTokenType) => tokenType == maybeTokenType
-  }.map {
-    case (lexeme, _) => lexeme
-  }.getOrElse {
+  def reservedTok(tokenType: TokenType) = Token(tokenType, Token.tokenToReservedWord.get(tokenType).getOrElse {
     throw new Error(s"No lexeme for $tokenType")
   })
 

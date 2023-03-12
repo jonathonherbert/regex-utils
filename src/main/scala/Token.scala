@@ -26,6 +26,8 @@ object Token:
     "then" -> TokenType.THEN
   )
 
+  val tokenToReservedWord = reservedWords.map(_.swap)
+
 case class Token(
     tokenType: TokenType,
     lexeme: String = "",

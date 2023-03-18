@@ -2,7 +2,7 @@ package regexlang
 
 // For more information on writing tests, see
 // https://scalameta.org/munit/docs/getting-started.html
-class MySuite extends munit.FunSuite {
+class ScannerSpec extends munit.FunSuite {
   import TokenType._
 
   def strTok(str: String, ln: Int = 1) = Token(STRING, s"'$str'", str, ln)

@@ -6,7 +6,7 @@ enum TokenType:
     COMMA, DOT, MINUS, PLUS, SEMICOLON, SLASH, STAR,
 
     // Keywords.
-    MAYBE, OR, THEN,
+    MAYBE, OR, THEN, GROUPED_AS,
 
     // Templates.
     WORD_BOUNDARY, WORD, LETTER, DIGIT, WHITESPACE,
@@ -23,7 +23,8 @@ object Token:
     "letter" -> TokenType.LETTER,
     "digit" -> TokenType.DIGIT,
     "or" -> TokenType.OR,
-    "then" -> TokenType.THEN
+    "then" -> TokenType.THEN,
+    "grouped as" -> TokenType.GROUPED_AS
   )
 
   val tokenToReservedWord = reservedWords.map(_.swap)

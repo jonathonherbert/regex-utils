@@ -1,7 +1,8 @@
 package regexlang
 
 import TokenType._
-import Grammar._
+import scala.util.Try
+import javax.naming.NameParser
 
 class ParseError extends Exception
 
@@ -18,210 +19,261 @@ object Parser:
 
 class Parser(tokens: List[Token]):
   var current: Int = 0;
-  val skipTypes = List(CLASS, FOR, FUN, IF, RETURN, VAR, WHILE)
+  val skipTypes = List.empty
 
-  def parse(): Try[List[Stmt]] =
-    Try { program }
+  def parse(): Try[List[Expr]] =
+    Try { expr }
 
-  // program    -> statement* EOF
-  private def program =
-    var declarations = List.empty[Option[Stmt]]
-    while (peek().tokenType != EOF) {
-      declarations = declarations :+ declaration
+  // regex = expr*
+  private def expr =
+    var exprs = List.empty[Option[BaseExpr]]
+    while (peek().tokenType != EOF && peek().tokenType != RIGHT_PAREN) {
+      exprs = exprs :+ baseExpr
     }
-    declarations.flatten
+    exprs.flatten
 
-  // declaration  -> varDecl | statement
-  private def declaration: Option[Stmt] =
+  // expr = (compound_expr | grouped_expr)
+  private def baseExpr: Option[BaseExpr] =
     try {
-      if (matchTokens(VAR)) Some(varDecl)
-      else Some(statement)
+      if (matchTokens(LEFT_PAREN)) Some(BaseExpr(groupedExpr))
+      else Some(BaseExpr(compoundExpr))
     } catch {
       case e: ParseError =>
         synchronize()
         None
     }
 
-  // varDecl  -> 'var' identifier ('=' expression)? ";"
-  private def varDecl =
-    val varName = consume(IDENTIFIER, "Expected variable name")
-    var initialisedValue = if (matchTokens(EQUAL)) expression else null
-    consume(SEMICOLON, "Expected ';' after variable declaration")
-    VarDecl(varName, initialisedValue)
+  // grouped_expr = '(' compound_expr ')' ('grouped as' str)?
+  private def groupedExpr: GroupedExpr =
+    val e = expr
+    consume(RIGHT_PAREN, "I expected a group to end with ')'")
+    val name = if (matchTokens(GROUPED_AS)) {
+      Some(literal.getOrElse {
+        throw Parser.error(previous(), "I expected the name of a group")
+      })
+    } else None
+    GroupedExpr(e)
 
-  // statement  -> exprStmt | printStmt | block
-  private def statement: Stmt =
-    if (matchTokens(PRINT)) printStmt
-    else if (matchTokens(LEFT_BRACE)) block
-    else if (matchTokens(IF)) ifStmt
-    else if (matchTokens(WHILE)) whileStmt
-    else if (matchTokens(FOR)) forStmt
-    else exprStmt
+  // compound_expr = prefix? basic_expr conjunction?
+  private def compoundExpr: CompoundExpr =
+    val maybePrefix = prefix
+    val expr = basicExpr
+    val maybeConjunction = conjunction
+    CompoundExpr(expr, prefix, maybeConjunction)
 
-  // whileStmt -> "while" "(" expression ")" "do" statement
-  private def whileStmt =
-    consume(LEFT_PAREN, "Expected '(' after beginning of while statement")
-    val expr = expression
-    consume(RIGHT_PAREN, "Expected ')' after while statement expression")
-    val stmt = statement
-    WhileStmt(expr, stmt)
+  // template | literal | grouped_expr
+  private def basicExpr: BasicExpr =
+    template.map(BasicExpr.apply)
+      .orElse(literal.map(BasicExpr.apply))
+      .orElse(Some(BasicExpr(groupedExpr)))
+      .getOrElse {
+        throw Parser.error(previous(), s"Expected a template, literal or grouped expression")
+      }
 
-  // ifStmt -> "if"  "(" expression ")" statement ("else" statement)?
-  private def ifStmt =
-    consume(LEFT_PAREN, "Expected '(' after beginning of if statement")
-    val expr = expression
-    consume(RIGHT_PAREN, "Expected ')' after if statement expression")
-    val thenStmt = statement
-    val elseStmt =
-      if (matchTokens(ELSE))
-        Some(statement)
-      else
-        None
-    IfStmt(expr, thenStmt, elseStmt)
+  private def conjunction: Option[Conjunction] =
+    if (matchTokens(THEN, OR)) {
+      Some(Conjunction(previous()))
+    } else None
 
-  private def forStmt =
-    consume(LEFT_PAREN, "Expected '(' after beginning of for statement")
-    consume(VAR, "Expected variable declaration at beginning of for statement")
-    val decl = varDecl
-    val comparisonExpr = comparison
-    consume(SEMICOLON, "Expected ';' after for statement comparison")
-    val incrementExpr = expression
-    consume(RIGHT_PAREN, "Expected ')' after for statement expression")
-    val stmt = statement
-    Block(
-      List(
-        decl,
-        WhileStmt(
-          comparisonExpr,
-          Block(List(Expression(incrementExpr), stmt))
-        )
-      )
-    )
-
-  // block      -> "{" declaration* "}"
-  private def block: Block =
-    var declarations = List.empty[Option[Stmt]]
-    while (peek().tokenType != RIGHT_BRACE && !isAtEnd) {
-      declarations = declarations :+ declaration
+  private def prefix: Option[Prefix] =
+    if (matchTokens(MAYBE)) {
+      Some(Prefix(previous()))
+    } else {
+      None // @todo – add range
     }
-    consume(RIGHT_BRACE, "Expected a '}' at the end of a block")
-    Block(declarations.flatten)
 
-  // printStmt  -> "print" expression_list
-  private def printStmt =
-    val expr = expressionList
-    consume(SEMICOLON, "Expected an ';' after an expression.")
-    Print(expr)
+  private def range: Range = ???
 
-  // exprStmt   -> expression_list
-  private def exprStmt =
-    val expr = expressionList
-    consume(SEMICOLON, "Expected an ';' after an expression.")
-    Expression(expr)
+  private def template: Option[Template] =
+    if (matchTokens(WORD, LETTER, DIGIT, WORD_BOUNDARY, DIGIT)) {
+      Some(Template(previous()))
+    } else None
 
-  // expression_list ->  expression (',' expression_list)
-  private def expressionList: ExprList =
-    var expr = expression
-    if (matchTokens(COMMA))
-      ExprList(expr, Some(expressionList))
-    else
-      ExprList(expr)
+  private def literal: Option[Literal] =
+    if (matchTokens(NUMBER, STRING)) {
+      Some(Literal(previous().literal.toString))
+    } else None
 
-  // expression -> equality
-  private def expression = assignment
+  // // varDecl  -> 'var' identifier ('=' expression)? ";"
+  // private def varDecl =
+  //   val varName = consume(IDENTIFIER, "Expected variable name")
+  //   var initialisedValue = if (matchTokens(EQUAL)) expression else null
+  //   consume(SEMICOLON, "Expected ';' after variable declaration")
+  //   VarDecl(varName, initialisedValue)
 
-  // assignment -> IDENTIFIER '=' assignment | equality
-  private def assignment =
-    val expr = or
-    (matchTokens(EQUAL), expr) match
-      case (true, Variable(name)) =>
-        Assign(name, equality)
-      case (false, expr) => expr
-      case _ =>
-        throw Parser.error(previous(), s"Cannot assign to an expression")
+  // // statement  -> exprStmt | printStmt | block
+  // private def statement: Stmt =
+  //   if (matchTokens(PRINT)) printStmt
+  //   else if (matchTokens(LEFT_BRACE)) block
+  //   else if (matchTokens(IF)) ifStmt
+  //   else if (matchTokens(WHILE)) whileStmt
+  //   else if (matchTokens(FOR)) forStmt
+  //   else exprStmt
 
-  // logic_or -> logic_and ("or" logic_and)*
-  private def or =
-    val leftExpr = and
-    if (matchTokens(OR))
-      val operator = previous()
-      val rightExpr = and
-      Logical(leftExpr, operator, rightExpr)
-    else leftExpr
+  // // whileStmt -> "while" "(" expression ")" "do" statement
+  // private def whileStmt =
+  //   consume(LEFT_PAREN, "Expected '(' after beginning of while statement")
+  //   val expr = expression
+  //   consume(RIGHT_PAREN, "Expected ')' after while statement expression")
+  //   val stmt = statement
+  //   WhileStmt(expr, stmt)
 
-  // logic_and -> equality ("and" equality)*
-  private def and =
-    val leftExpr = equality
-    if (matchTokens(AND))
-      val operator = previous()
-      val rightExpr = equality
-      Logical(leftExpr, operator, rightExpr)
-    else leftExpr
+  // // ifStmt -> "if"  "(" expression ")" statement ("else" statement)?
+  // private def ifStmt =
+  //   consume(LEFT_PAREN, "Expected '(' after beginning of if statement")
+  //   val expr = expression
+  //   consume(RIGHT_PAREN, "Expected ')' after if statement expression")
+  //   val thenStmt = statement
+  //   val elseStmt =
+  //     if (matchTokens(ELSE))
+  //       Some(statement)
+  //     else
+  //       None
+  //   IfStmt(expr, thenStmt, elseStmt)
 
-  // equality   -> comparison (('==' | '!=' comparison)*
-  private def equality =
-    var expr = comparison
-    while (matchTokens(BANG_EQUAL, EQUAL_EQUAL)) {
-      val operator = previous()
-      val right = comparison
-      expr = Binary(expr, operator, right)
-    }
-    expr
+  // private def forStmt =
+  //   consume(LEFT_PAREN, "Expected '(' after beginning of for statement")
+  //   consume(VAR, "Expected variable declaration at beginning of for statement")
+  //   val decl = varDecl
+  //   val comparisonExpr = comparison
+  //   consume(SEMICOLON, "Expected ';' after for statement comparison")
+  //   val incrementExpr = expression
+  //   consume(RIGHT_PAREN, "Expected ')' after for statement expression")
+  //   val stmt = statement
+  //   Block(
+  //     List(
+  //       decl,
+  //       WhileStmt(
+  //         comparisonExpr,
+  //         Block(List(Expression(incrementExpr), stmt))
+  //       )
+  //     )
+  //   )
 
-  // comparison -> term (('>' | '>=' | '<' | '<=') term)*
-  private def comparison =
-    var expr = term
-    while (matchTokens(LESS, LESS_EQUAL, GREATER, GREATER_EQUAL)) {
-      val operator = previous()
-      val right = term
-      expr = Binary(expr, operator, right)
-    }
-    expr
+  // // block      -> "{" declaration* "}"
+  // private def block: Block =
+  //   var declarations = List.empty[Option[Stmt]]
+  //   while (peek().tokenType != RIGHT_BRACE && !isAtEnd) {
+  //     declarations = declarations :+ declaration
+  //   }
+  //   consume(RIGHT_BRACE, "Expected a '}' at the end of a block")
+  //   Block(declarations.flatten)
 
-  // term       -> factor (("+" | "-") factor)*
-  private def term =
-    var expr = factor
-    while (matchTokens(PLUS, MINUS)) {
-      val operator = previous()
-      val right = factor
-      expr = Binary(expr, operator, right)
-    }
-    expr
+  // // printStmt  -> "print" expression_list
+  // private def printStmt =
+  //   val expr = expressionList
+  //   consume(SEMICOLON, "Expected an ';' after an expression.")
+  //   Print(expr)
 
-  // factor     -> unary (("/" | "*") unary)*
-  private def factor =
-    var expr = unary
-    while (matchTokens(STAR, SLASH)) {
-      val operator = previous()
-      val right = unary
-      expr = Binary(expr, operator, right)
-    }
-    expr
+  // // exprStmt   -> expression_list
+  // private def exprStmt =
+  //   val expr = expressionList
+  //   consume(SEMICOLON, "Expected an ';' after an expression.")
+  //   Expression(expr)
 
-  // unary      -> (("!" | "-") unary) | primary
-  private def unary: Expr =
-    if (matchTokens(BANG, MINUS)) {
-      val operator = previous()
-      val right = unary
-      Unary(operator, right)
-    } else primary
+  // // expression_list ->  expression (',' expression_list)
+  // private def expressionList: ExprList =
+  //   var expr = expression
+  //   if (matchTokens(COMMA))
+  //     ExprList(expr, Some(expressionList))
+  //   else
+  //     ExprList(expr)
 
-  // primary    -> number | string | true | false | Nil | "(" expression ")"
-  private def primary = () match {
-    case () if matchTokens(FALSE)          => Literal(false)
-    case () if matchTokens(TRUE)           => Literal(true)
-    case () if matchTokens(NIL)            => Literal(null)
-    case () if matchTokens(STRING, NUMBER) => Literal(previous().literal)
-    case () if matchTokens(IDENTIFIER)     => Variable(previous())
-    case () if matchTokens(LEFT_PAREN) =>
-      val expr = expression
-      consume(
-        RIGHT_PAREN,
-        "Expected an ')' after an expression. Did you miss a brace?"
-      )
-      Grouping(expr)
-    case () => throw Parser.error(peek(), "Expected an expression.")
-  }
+  // // expression -> equality
+  // private def expression = assignment
+
+  // // assignment -> IDENTIFIER '=' assignment | equality
+  // private def assignment =
+  //   val expr = or
+  //   (matchTokens(EQUAL), expr) match
+  //     case (true, Variable(name)) =>
+  //       Assign(name, equality)
+  //     case (false, expr) => expr
+  //     case _ =>
+  //       throw Parser.error(previous(), s"Cannot assign to an expression")
+
+  // // logic_or -> logic_and ("or" logic_and)*
+  // private def or =
+  //   val leftExpr = and
+  //   if (matchTokens(OR))
+  //     val operator = previous()
+  //     val rightExpr = and
+  //     Logical(leftExpr, operator, rightExpr)
+  //   else leftExpr
+
+  // // logic_and -> equality ("and" equality)*
+  // private def and =
+  //   val leftExpr = equality
+  //   if (matchTokens(AND))
+  //     val operator = previous()
+  //     val rightExpr = equality
+  //     Logical(leftExpr, operator, rightExpr)
+  //   else leftExpr
+
+  // // equality   -> comparison (('==' | '!=' comparison)*
+  // private def equality =
+  //   var expr = comparison
+  //   while (matchTokens(BANG_EQUAL, EQUAL_EQUAL)) {
+  //     val operator = previous()
+  //     val right = comparison
+  //     expr = Binary(expr, operator, right)
+  //   }
+  //   expr
+
+  // // comparison -> term (('>' | '>=' | '<' | '<=') term)*
+  // private def comparison =
+  //   var expr = term
+  //   while (matchTokens(LESS, LESS_EQUAL, GREATER, GREATER_EQUAL)) {
+  //     val operator = previous()
+  //     val right = term
+  //     expr = Binary(expr, operator, right)
+  //   }
+  //   expr
+
+  // // term       -> factor (("+" | "-") factor)*
+  // private def term =
+  //   var expr = factor
+  //   while (matchTokens(PLUS, MINUS)) {
+  //     val operator = previous()
+  //     val right = factor
+  //     expr = Binary(expr, operator, right)
+  //   }
+  //   expr
+
+  // // factor     -> unary (("/" | "*") unary)*
+  // private def factor =
+  //   var expr = unary
+  //   while (matchTokens(STAR, SLASH)) {
+  //     val operator = previous()
+  //     val right = unary
+  //     expr = Binary(expr, operator, right)
+  //   }
+  //   expr
+
+  // // unary      -> (("!" | "-") unary) | primary
+  // private def unary: Expr =
+  //   if (matchTokens(BANG, MINUS)) {
+  //     val operator = previous()
+  //     val right = unary
+  //     Unary(operator, right)
+  //   } else primary
+
+  // // primary    -> number | string | true | false | Nil | "(" expression ")"
+  // private def primary = () match {
+  //   case () if matchTokens(FALSE)          => Literal(false)
+  //   case () if matchTokens(TRUE)           => Literal(true)
+  //   case () if matchTokens(NIL)            => Literal(null)
+  //   case () if matchTokens(STRING, NUMBER) => Literal(previous().literal)
+  //   case () if matchTokens(IDENTIFIER)     => Variable(previous())
+  //   case () if matchTokens(LEFT_PAREN) =>
+  //     val expr = expression
+  //     consume(
+  //       RIGHT_PAREN,
+  //       "Expected an ')' after an expression. Did you miss a brace?"
+  //     )
+  //     Grouping(expr)
+  //   case () => throw Parser.error(peek(), "Expected an expression.")
+  // }
 
   private def matchTokens(tokens: TokenType*) =
     tokens.exists(token =>

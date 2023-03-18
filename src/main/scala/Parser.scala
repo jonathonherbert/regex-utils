@@ -21,7 +21,7 @@ class Parser(tokens: List[Token]):
   var current: Int = 0;
   val skipTypes = List.empty
 
-  def parse(): Try[List[Expr]] =
+  def parse(): Try[Expr] =
     Try { expr }
 
   // regex = expr*
@@ -30,7 +30,7 @@ class Parser(tokens: List[Token]):
     while (peek().tokenType != EOF && peek().tokenType != RIGHT_PAREN) {
       exprs = exprs :+ baseExpr
     }
-    exprs.flatten
+    Expr(exprs.flatten)
 
   // expr = (compound_expr | grouped_expr)
   private def baseExpr: Option[BaseExpr] =

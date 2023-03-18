@@ -11,7 +11,7 @@ class ParserSpec extends munit.FunSuite {
     val parser = new Parser(tokens)
     val result = parser.parse()
 
-    val expected = Success(List.empty)
+    val expected = Success(Expr(List.empty))
     assertEquals(result, expected)
   }
 
@@ -22,32 +22,39 @@ class ParserSpec extends munit.FunSuite {
     val parser = new Parser(tokens)
     val result = parser.parse()
     val expected = Success(
-      List(
-        BaseExpr(
-          expr = CompoundExpr(
-            expr = BasicExpr(
-              expr = Literal(
-                value = "this"
-              )
-            ),
-            prefix = None,
-            conjunction = Some(Conjunction(Token(TokenType.OR, "or", null, 1)))
-          )
-        ),
-        BaseExpr(
-          expr = CompoundExpr(
-            expr = BasicExpr(
-              expr = Literal(
-                value = "that"
-              )
-            ),
-            prefix = None,
-            conjunction = None
+      Expr(
+        List(
+          BaseExpr(
+            expr = CompoundExpr(
+              expr = BasicExpr(
+                value = Literal(
+                  value = "this"
+                )
+              ),
+              prefix = None,
+              conjunction =
+                Some(Conjunction(Token(TokenType.OR, "or", null, 1)))
+            )
+          ),
+          BaseExpr(
+            expr = CompoundExpr(
+              expr = BasicExpr(
+                value = Literal(
+                  value = "that"
+                )
+              ),
+              prefix = None,
+              conjunction = None
+            )
           )
         )
       )
     )
     assertEquals(result, expected)
+
+    val regex = result.map(_.toRegex()).get
+
+    assertEquals(regex, "this|that")
   }
 
   test("short program") {
@@ -58,62 +65,71 @@ class ParserSpec extends munit.FunSuite {
     val result = parser.parse()
 
     val expected = Success(
-      List(
-        BaseExpr(
-          expr = CompoundExpr(
-            expr = BasicExpr(
-              expr = Literal(
-                value = "zelensk"
-              )
-            ),
-            prefix = None,
-            conjunction = Some(Conjunction(Token(TokenType.THEN, "then", null, 1)))
-          )
-        ),
-        BaseExpr(
-          expr = GroupedExpr(
-            expr = List(
-              BaseExpr(
-                expr = CompoundExpr(
-                  expr = BasicExpr(
-                    expr = Literal(
-                      value = "y"
-                    )
-                  ),
-                  prefix = None,
-                  conjunction =
-                    Some(Conjunction(Token(TokenType.OR, "or", null, 1)))
+      Expr(
+        List(
+          BaseExpr(
+            expr = CompoundExpr(
+              expr = BasicExpr(
+                value = Literal(
+                  value = "zelensk"
                 )
               ),
-              BaseExpr(
-                expr = CompoundExpr(
-                  expr = BasicExpr(
-                    expr = Literal(
-                      value = "iy"
+              prefix = None,
+              conjunction =
+                Some(Conjunction(Token(TokenType.THEN, "then", null, 1)))
+            )
+          ),
+          BaseExpr(
+            expr = GroupedExpr(
+              expr = Expr(
+                List(
+                  BaseExpr(
+                    expr = CompoundExpr(
+                      expr = BasicExpr(
+                        value = Literal(
+                          value = "y"
+                        )
+                      ),
+                      prefix = None,
+                      conjunction =
+                        Some(Conjunction(Token(TokenType.OR, "or", null, 1)))
                     )
                   ),
-                  prefix = None,
-                  conjunction =
-                    Some(Conjunction(Token(TokenType.OR, "or", null, 1)))
+                  BaseExpr(
+                    expr = CompoundExpr(
+                      expr = BasicExpr(
+                        value = Literal(
+                          value = "iy"
+                        )
+                      ),
+                      prefix = None,
+                      conjunction =
+                        Some(Conjunction(Token(TokenType.OR, "or", null, 1)))
+                    )
+                  ),
+                  BaseExpr(
+                    expr = CompoundExpr(
+                      expr = BasicExpr(
+                        value = Literal(
+                          value = "yy"
+                        )
+                      ),
+                      prefix = None,
+                      conjunction = None
+                    )
+                  )
                 )
               ),
-              BaseExpr(
-                expr = CompoundExpr(
-                  expr = BasicExpr(
-                    expr = Literal(
-                      value = "yy"
-                    )
-                  ),
-                  prefix = None,
-                  conjunction = None
-                )
-              )
-            ),
-            name = None
+              name = None
+            )
           )
         )
       )
     )
     assertEquals(result, expected)
+
+     val regex = result.map(_.toRegex()).get
+
+    assertEquals(regex, "zelensk(y|iy|yy)")
   }
 }

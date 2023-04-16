@@ -1,98 +1,158 @@
 package regexlang
 
+import util._
 import TokenType._
 import scala.util.Try
 import javax.naming.NameParser
 
 class ParseError extends Exception
 
-object Parser:
-  def error(token: Token, message: String) =
-    if (token.tokenType == EOF)
-      report(token.line, " at end of file", message)
-    else
-      report(token.line, s" at '${token.lexeme}'", message)
-    new ParseError
 
-  def report(line: Int, location: String, message: String) =
-    println(s"${message} ${location} on line ${line}")
-
-class Parser(tokens: List[Token]):
+class Parser(progStr: String, tokens: List[Token]):
   var current: Int = 0;
+  val debug = false
+  var curDepth = 0
+  val maxDepth = 1000
   val skipTypes = List.empty
 
   def parse(): Try[Expr] =
-    Try { expr }
+    if (debug) {
+      println(tokens.map(t => s"(${t.tokenType}, ${t.literal})").mkString(", "))
+    }
+    Try { regex }
 
-  // regex = expr*
-  private def expr =
-    var exprs = List.empty[Option[BaseExpr]]
+  private def regex = log("regex = expr*") {
+    var exprs = List.empty[BaseExpr]
     while (peek().tokenType != EOF && peek().tokenType != RIGHT_PAREN) {
       exprs = exprs :+ baseExpr
     }
-    Expr(exprs.flatten)
+    Expr(exprs)
+  }
 
-  // expr = (compound_expr | grouped_expr)
-  private def baseExpr: Option[BaseExpr] =
-    try {
-      if (matchTokens(LEFT_PAREN)) Some(BaseExpr(groupedExpr))
-      else Some(BaseExpr(compoundExpr))
-    } catch {
-      case e: ParseError =>
-        synchronize()
-        None
+  private def baseExpr: BaseExpr =
+    log("expr = compound_expr (conjunction? expr)") {
+        BaseExpr(compoundExpr, conjunction)
     }
 
-  // grouped_expr = '(' compound_expr ')' ('grouped as' str)?
-  private def groupedExpr: GroupedExpr =
-    val e = expr
-    consume(RIGHT_PAREN, "I expected a group to end with ')'")
-    val name = if (matchTokens(GROUPED_AS)) {
-      Some(literal.getOrElse {
-        throw Parser.error(previous(), "I expected the name of a group")
-      })
-    } else None
-    GroupedExpr(e)
+  private def basicExpr: Option[BasicExpr] =
+    log("template | literal | grouped_expr") {
+      template.map(BasicExpr.apply)
+        .orElse(literal.map(BasicExpr.apply))
+        .orElse(groupedExpr.map(BasicExpr.apply))
+    }
 
-  // compound_expr = prefix? basic_expr conjunction?
+  private def groupedExpr: Option[GroupedExpr] =
+    log("grouped_expr = '(' compound_expr ')' ('grouped as' str)?") {
+      Try {
+          consume(LEFT_PAREN, "I expected a group to start with '('")
+          val e = regex
+          consume(RIGHT_PAREN, "I expected a group to end with ')'")
+          val name = if (matchTokens(GROUPED_AS)) {
+            Some(literal.getOrElse {
+              throw error(previous(), "I expected the name of a group")
+            }.value)
+          } else None
+          GroupedExpr(e, name)
+      }.toOption
+    }
+
   private def compoundExpr: CompoundExpr =
-    val maybePrefix = prefix
-    val expr = basicExpr
-    val maybeConjunction = conjunction
-    CompoundExpr(expr, prefix, maybeConjunction)
-
-  // template | literal | grouped_expr
-  private def basicExpr: BasicExpr =
-    template.map(BasicExpr.apply)
-      .orElse(literal.map(BasicExpr.apply))
-      .orElse(Some(BasicExpr(groupedExpr)))
-      .getOrElse {
-        throw Parser.error(previous(), s"Expected a template, literal or grouped expression")
+    log("compound_expr = prefix? expr suffix?") {
+      val maybePrefix = prefix
+      val definitelyExpr = basicExpr.getOrElse {
+        throw error(peek(), s"I expected an expression")
       }
+      val maybeSuffix = suffix
+      CompoundExpr(definitelyExpr, maybePrefix, maybeSuffix)
+    }
 
   private def conjunction: Option[Conjunction] =
-    if (matchTokens(THEN, OR)) {
-      Some(Conjunction(previous()))
-    } else None
+    log("conjunction = 'then' | 'after' | 'and' | 'or'") {
+      if (matchTokens(THEN, OR)) {
+        Some(Conjunction(previous()))
+      } else None
+    }
 
-  private def prefix: Option[Prefix] =
+  private def prefix: Option[Prefix] = log("prefix = 'maybe'") {
     if (matchTokens(MAYBE)) {
       Some(Prefix(previous()))
     } else {
-      None // @todo – add range
+      None
+    }
+  }
+
+  private def suffix: Option[Suffix] = log("suffix = quantifier") {
+    quantifier.map(Suffix.apply)
+  }
+
+  private def quantifier: Option[Quantifier] =
+    log("quantifier = quantifier_exact | quantifier_range") {
+      if (peek() == TokenType.NUMBER) {
+        quantExact
+      } else {
+        quantRange
+      }
     }
 
-  private def range: Range = ???
+  private def quantExact: Option[QuantExact] =
+    log("quantifier_exact = number 'of'") {
+      Try {
+        val quantToken = consume(
+          TokenType.NUMBER,
+          "I expected a number to specify how many times this pattern would repeat."
+        )
+        consume(
+          TokenType.QUANT_EXACT,
+          "I expected 'of' to follow a number specifying how many times this pattern would repeat."
+        )
+        QuantExact(parseLiteralAsNumber(quantToken, "the value before 'of'"))
+      }.toOption
+    }
+
+  private def quantRange: Option[QuantRange] = log(
+    "quantifier_range = 'one or more', 'zero or more' | 'between' number 'and' number"
+  ) {
+    peek().tokenType match {
+      case TokenType.QUANT_ZERO_OR_MORE =>
+        advance()
+        Some(QuantRange(0))
+      case TokenType.QUANT_ONE_OR_MORE =>
+        advance()
+        Some(QuantRange(1))
+      case TokenType.QUANT_BETWEEN =>
+        advance()
+        val from = consume(
+          TokenType.NUMBER,
+          "I expected a number to specify a minimum number of times this pattern would repeat"
+        )
+        matchTokens(TokenType.QUANT_AND)
+        val to = consume(
+          TokenType.NUMBER,
+          "I expected a number to specify a maximum number of times this pattern would repeat"
+        )
+        matchTokens(TokenType.QUANT_TIMES)
+        Some(
+          QuantRange(
+            parseLiteralAsNumber(from, "the value after 'between'"),
+            Some(parseLiteralAsNumber(to, "the value after 'and'"))
+          )
+        )
+      case _ => None
+    }
+  }
 
   private def template: Option[Template] =
-    if (matchTokens(WORD, LETTER, DIGIT, WORD_BOUNDARY, DIGIT)) {
-      Some(Template(previous()))
-    } else None
+    log("template = 'word' | 'letter' | 'digit' | 'word boundary'") {
+      if (matchTokens(WORD, LETTER, DIGIT, WORD_BOUNDARY, DIGIT)) {
+        Some(Template(previous()))
+      } else None
+    }
 
-  private def literal: Option[Literal] =
+  private def literal: Option[Literal] = log("literal = number | str") {
     if (matchTokens(NUMBER, STRING)) {
       Some(Literal(previous().literal.toString))
     } else None
+  }
 
   // // varDecl  -> 'var' identifier ('=' expression)? ";"
   // private def varDecl =
@@ -190,7 +250,7 @@ class Parser(tokens: List[Token]):
   //       Assign(name, equality)
   //     case (false, expr) => expr
   //     case _ =>
-  //       throw Parser.error(previous(), s"Cannot assign to an expression")
+  //       throw error(previous(), s"Cannot assign to an expression")
 
   // // logic_or -> logic_and ("or" logic_and)*
   // private def or =
@@ -272,8 +332,19 @@ class Parser(tokens: List[Token]):
   //       "Expected an ')' after an expression. Did you miss a brace?"
   //     )
   //     Grouping(expr)
-  //   case () => throw Parser.error(peek(), "Expected an expression.")
+  //   case () => throw error(peek(), "Expected an expression.")
   // }
+
+  private def parseLiteralAsNumber(token: Token, message: String): Int = {
+    token.literal.toString().toFloatOption match {
+      case Some(value) => value.toInt
+      case None =>
+        throw error(
+          token,
+          s"I expected ${message} to be a number, but I received ${token}"
+        )
+    }
+  }
 
   private def matchTokens(tokens: TokenType*) =
     tokens.exists(token =>
@@ -296,7 +367,7 @@ class Parser(tokens: List[Token]):
 
   private def consume(tokenType: TokenType, message: String) = {
     if (check(tokenType)) advance()
-    else throw Parser.error(peek(), message)
+    else throw error(peek(), message)
   }
 
   private def previous() = tokens(current - 1)
@@ -310,3 +381,21 @@ class Parser(tokens: List[Token]):
         return
       advance()
     }
+
+  def error(token: Token, message: String) =
+    if (token.tokenType == EOF)
+      report(token.line, " at end of file", message)
+    else
+      report(token.line, s" at '${token.lexeme}', position ${token.pos} (${progStr.safeSubstring(token.pos - 5, token.pos - 1)}>>>${progStr.charAt(token.pos)}<<<${progStr.safeSubstring(token.pos + 1, token.pos + 6)})", message)
+    new ParseError
+
+  def report(line: Int, location: String, message: String) =
+    println(s"${message} ${location} on line ${line}")
+
+  def log[E](grammarExpr: String)(f: => E): E =
+    if (curDepth > maxDepth) throw new Error("Max recursion depth exceeded")
+    curDepth = curDepth + 1
+    if (debug) println(s"Parse for $grammarExpr from ${peek().tokenType}")
+    val result = f
+    if (debug) println(s"Result for $grammarExpr: $result")
+    result

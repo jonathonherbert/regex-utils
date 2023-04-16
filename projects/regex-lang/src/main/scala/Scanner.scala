@@ -14,7 +14,7 @@ class Scanner(program: String):
       scanToken
     }
 
-    tokens :+ Token(TokenType.EOF, "", null, line)
+    tokens :+ Token(TokenType.EOF, "", null, current, line)
 
   def isAtEnd = current == program.size
 
@@ -24,7 +24,7 @@ class Scanner(program: String):
       case ')' => addToken(TokenType.RIGHT_PAREN)
       case '{' => addToken(TokenType.LEFT_BRACE)
       case '}' => addToken(TokenType.RIGHT_BRACE)
-      case ',' => addToken(TokenType.COMMA)
+      case ',' => addToken(TokenType.THEN)
       case '.' => addToken(TokenType.DOT)
       case '-' => addToken(TokenType.MINUS)
       case '+' => addToken(TokenType.PLUS)
@@ -68,7 +68,7 @@ class Scanner(program: String):
 
   def addToken(tokenType: TokenType, literal: Double | String | Null = null) =
     val text = program.substring(start, current)
-    tokens = tokens :+ Token(tokenType, text, literal, line)
+    tokens = tokens :+ Token(tokenType, text.trim(), literal, start, line)
 
   def addCommentBlock: Unit =
     while (!(peek == '*' && peekNext == '/') && !isAtEnd)
@@ -84,12 +84,20 @@ class Scanner(program: String):
     advance
     advance
 
-  def addReservedWord =
-    while (peek.isLetterOrDigit) advance
-    val text = program.substring(start, current)
-    Token.reservedWords.get(text.toLowerCase()) match {
-      case Some(tokenType) => addToken(tokenType)
-      case None => error(line, s"Expected the next part of the expression to be one of ${Token.reservedWords.values.mkString(", ")}")
+  def addReservedWord: Unit =
+    // Eagerly consumes input a word at a time until it finds a match
+    val text = program.substring(start).trim().toLowerCase()
+    val maybeReservedWord = Token.reservedWords.keys.toList
+      .filter(text.startsWith(_))
+      .sortWith((a, b) => a.length > b.length)
+      .headOption
+
+    maybeReservedWord.map(Token.reservedWords.get).flatten match {
+      case Some(tokenType) =>
+        current = start + maybeReservedWord.getOrElse("").length
+        addToken(tokenType)
+      case None =>
+        error(line, s"Expected the next part of the expression, '$text', to be one of ${Token.reservedWords.keys.mkString(", ")}")
     }
 
   def advance =

@@ -7,5 +7,9 @@
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "fp-ts": "^2.16.1",
+    "regexp-tree": "^0.1.27"
   }
 }

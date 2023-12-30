@@ -1,15 +1,130 @@
+import regex from "regexp-tree";
+import type {
+  AstRegExp,
+  AstNode,
+  Char,
+  Disjunction,
+  Alternative,
+  Assertion,
+  CharacterClass,
+  ClassRange,
+  Backreference,
+  Group,
+  Repetition,
+  Quantifier,
+} from "regexp-tree/ast";
+import { either as E } from "fp-ts";
+
+export const getPossibilities = (expr: string, limit = Infinity) => {
+  const exprAst = E.tryCatch(
+    () => regex.parse(expr as string),
+    (err: unknown) =>
+      err instanceof Error ? err : Error("unexpected error when parsing json")
+  );
+
+  return E.map(getMatchFromAst(limit))(exprAst);
+};
+
+const Generator = {
+  map: <T, U>(f: (t: T) => U, g: Generator<T>) => function*() {
+    for (const x of g) {
+      yield f(x);
+    }
+  }
+}
+
 /**
- * @param {Array<number>} output
+ * Flatten the result of each generation
  */
-export const createSource = (output: number[]) => {
+const flattenGen = <T extends Array<any>>(gen: Generator<T>) => Generator.map(arr => console.log(arr) || arr.flat(), gen);
+
+const concatGen = <T extends Array<any>>(gen: Generator<T>) => Generator.map(arr => arr.join(""), gen)();
+
+const generators: Record<string, (n: AstNode) => Generator<string, void, unknown>> = {
+  Char:
+    (node: Char) => {
+      return createSource([node.value]);
+    },
+  Disjunction: (node: Disjunction) => {
+    const left = getGeneratorFromNode(node.left);
+    const right = getGeneratorFromNode(node.right);
+
+    return combineSources([left, right].filter(Boolean) as Generator<string>[]);
+  },
+  RegExp: (node: AstRegExp) => {
+    return getGeneratorFromNode(node.body);
+  },
+  Alternative: (node: Alternative) => {
+    return concatGen(combineSources(node.expressions.map(getGeneratorFromNode)));
+  },
+  Assertion: (node: Assertion) => noopIter(),
+  CharacterClass: (node: CharacterClass) =>
+    noopIter(),
+  ClassRange: (node: ClassRange) => noopIter(),
+  Backreference: (node: Backreference) =>
+    noopIter(),
+  Group: (node: Group) => {
+    return getGeneratorFromNode(node.expression);
+  },
+  Repetition: (node: Repetition) => noopIter(),
+  Quantifier: (node: Quantifier) => noopIter(),
+} as const;
+
+const noopIter = () => {
+  console.log('noop')
+};
+
+const getMatchFromAst = (limit: number) => (ast: AstRegExp) => {
+  console.log(ast);
+  return getNResults(getGeneratorFromNode(ast), limit)
+};
+
+function getGeneratorFromNode<T extends AstNode>(
+  node: T | null,
+) {
+  if (!node) {
+    return createSource([]);
+  }
+
+  switch (node.type) {
+    case "RegExp":
+      return generators.RegExp(node);
+    case "Disjunction":
+      return generators.Disjunction(node);
+    case "Alternative":
+      return generators.Alternative(node);
+    case "Assertion":
+      return generators.Assertion(node);
+    case "Char":
+      return generators.Char(node);
+    case "CharacterClass":
+      return generators.CharacterClass(node);
+    case "ClassRange":
+      return generators.ClassRange(node);
+    case "Backreference":
+      return generators.Backreference(node);
+    case "Group":
+      return generators.Group(node);
+    case "Repetition":
+      return generators.Repetition(node);
+    case "Quantifier":
+      return generators.Quantifier(node);
+  }
+}
+
+
+/**
+ * @param {Array<string>} output
+ */
+export const createSource = (output: string[]) => {
   return (function* () {
-    for (let element of output) {
+    for (const element of output) {
       yield element;
     }
   })();
 };
 
-export function* combineSources(sources: Generator<number | number[]>[]): Generator<number[]> {
+export function* combineSources(sources: Generator<string | string[]>[]): Generator<string[]> {
   let sourceIndex = 0;
 
   // Seed each source with at least one
@@ -80,7 +195,7 @@ export function* combineSources(sources: Generator<number | number[]>[]): Genera
   }
 }
 
-export const getNCombinations = (gen: Generator<number[]>, n: number = Infinity) => {
+export const getNResults = (gen: Generator<string[]>, n = Infinity) => {
   let i = 0;
   let hasWork = true;
   const results = [];
@@ -88,6 +203,7 @@ export const getNCombinations = (gen: Generator<number[]>, n: number = Infinity)
     const { value, done } = gen.next();
     if (!done) results.push(value);
     hasWork = !done;
+    i++;
   }
   return results;
 };

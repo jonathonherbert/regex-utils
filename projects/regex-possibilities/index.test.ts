@@ -1,9 +1,45 @@
-import { expect, test } from "bun:test";
-import { createSource, combineSources, getNCombinations } from "./";
+import { either as E } from "fp-ts";
+import { expect, test, describe } from "bun:test";
+import { createSource, combineSources, getNResults } from "./";
+import { getPossibilities } from "./index.ts";
+
+const get = (E)
+
+describe("possibilities", () => {
+
+  test.only("disjunct", () => {
+    const source = getPossibilities("/a|b|c/");
+    expect(E.getOrElse(() => "")(source)).toEqual(["a", "b", "c"]);
+  });
+
+  test.only("disjunct w/ limit", () => {
+    const source = getPossibilities("/a|b|c/", 2);
+    expect(E.getOrElse(() => "")(source)).toEqual(["a", "b"]);
+  });
+
+  test("group", () => {
+    const source = getPossibilities("/(ab)(cd)/");
+    expect(E.getOrElse(() => "")(source)).toEqual(["abcd"]);
+  });
+  test("two groups with disjunct", () => {
+    const source = getPossibilities("/(ab)|(cd)/");
+    expect(E.getOrElse(() => "")(source)).toEqual([["ab", "cd"]]);
+  });
+
+  test("group containing disjunct", () => {
+    const source = getPossibilities("/(a|b|c)/");
+    expect(E.getOrElse(() => "")(source)).toEqual([["a", "b", "c"]]);
+  });
+
+  test.only("groups containing disjunct", () => {
+    const source = getPossibilities("/(a|b)(c|d)/");
+    expect(E.getOrElse(() => "")(source)).toEqual([["ac", "ad", "bc", "bd"]]);
+  });
+});
 
 test("one list", () => {
   const source = combineSources([createSource([1, 2, 3])]);
-  const result = getNCombinations(source);
+  const result = getNResults(source);
   expect(result).toEqual([[1], [2], [3]]);
 });
 
@@ -12,7 +48,7 @@ test("two lists", () => {
     createSource([1, 2, 3]),
     createSource([4, 5, 6]),
   ]);
-  const result = getNCombinations(source);
+  const result = getNResults(source);
   expect(result).toEqual([
     [1, 4],
     [2, 4],
@@ -61,7 +97,7 @@ test("four lists", () => {
     createSource([5, 6]),
     createSource([7, 8]),
   ]);
-  const result = getNCombinations(source);
+  const result = getNResults(source);
   expect(result).toEqual([
     [1, 3, 5, 7],
     [2, 3, 5, 7],
@@ -87,7 +123,7 @@ test("nested lists", () => {
     createSource([1, 2]),
     combineSources([createSource([3, 4]), createSource([5, 6])]),
   ]);
-  const result = getNCombinations(source);
+  const result = getNResults(source);
   expect(result).toEqual([
     [1, 3, 5],
     [2, 3, 5],
@@ -98,4 +134,14 @@ test("nested lists", () => {
     [1, 4, 6],
     [2, 4, 6],
   ]);
+});
+
+test("single entities", () => {
+  const source =
+    combineSources([
+      createSource(["a"]),
+      createSource(["b"]),
+    ])
+  const result = getNResults(source);
+  expect(result).toEqual([["a", "b"]]);
 });

@@ -50,6 +50,10 @@ describe("possibilities", () => {
     assertRegexPossibilities("/[a-bA-B]/", ["a", "b", "A", "B"]);
   });
 
+  test("character class - negatives", () => {
+    assertRegexPossibilities("/[^!-z]/", [" ", "{", "|", "}", "~"]);
+  });
+
   test("example 1", () => {
     assertRegexPossibilities("/Camilla Parker ?-?Bowles/", [
       "Camilla ParkerBowles",

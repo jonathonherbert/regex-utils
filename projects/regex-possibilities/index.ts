@@ -22,8 +22,10 @@ export const getPossibilities = (expr: string, limit = Infinity): string[] => {
 };
 
 const generators = {
-  Char: (node: Char) => {
-    return Generator.fromArray([node.value]);
+  Char: (node: Char, negative = false) => {
+    return Generator.fromArray(
+      getCharRange(node.codePoint, node.codePoint, negative)
+    );
   },
   Disjunction: (node: Disjunction): Generator<string> => {
     const left = getGeneratorFromNode(node.left);
@@ -38,15 +40,19 @@ const generators = {
   },
   Alternative: (node: Alternative) => {
     return Generator.join(
-      combineSources(node.expressions.map(getGeneratorFromNode))
+      combineSources(node.expressions.map(node => getGeneratorFromNode(node)))
     );
   },
   Assertion: (node: Assertion) => noopIter(node),
   CharacterClass: (node: CharacterClass) => {
-    return Generator.concat(node.expressions.map(getGeneratorFromNode));
+    return Generator.concat(
+      node.expressions.map((expr) => getGeneratorFromNode(expr, node.negative))
+    );
   },
-  ClassRange: (node: ClassRange) => {
-    return Generator.fromArray(getCharRange(node.from.codePoint, node.to.codePoint));
+  ClassRange: (node: ClassRange, negative = false) => {
+    return Generator.fromArray(
+      getCharRange(node.from.codePoint, node.to.codePoint, negative)
+    );
   },
   Backreference: (node: Backreference) => noopIter(node),
   Group: (node: Group) => {
@@ -72,7 +78,7 @@ const generators = {
 } as const;
 
 const noopIter = (node: AstNode) => {
-  console.log(`No generator for ${node.type}`)
+  console.log(`No generator for ${node.type}`);
   return Generator.fromArray([]);
 };
 
@@ -81,7 +87,8 @@ const getMatchFromAst = (limit: number) => (ast: AstRegExp) => {
 };
 
 function getGeneratorFromNode<T extends AstNode>(
-  node: T | null
+  node: T | null,
+  negative = false
 ): Generator<string> {
   if (!node) {
     return Generator.fromArray([]);
@@ -97,11 +104,11 @@ function getGeneratorFromNode<T extends AstNode>(
     case "Assertion":
       return generators.Assertion(node);
     case "Char":
-      return generators.Char(node);
+      return generators.Char(node, negative);
     case "CharacterClass":
       return generators.CharacterClass(node);
     case "ClassRange":
-      return generators.ClassRange(node);
+      return generators.ClassRange(node, negative);
     case "Backreference":
       return generators.Backreference(node);
     case "Group":
@@ -185,5 +192,3 @@ export function* combineSources<T>(
     }
   }
 }
-
-

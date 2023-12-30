@@ -16,8 +16,21 @@ export const getRange = (min: number, max: number): number[] =>
     .fill(0)
     .map((_, i) => min + i);
 
-export const getCharRange = (from: number, to: number): string[] =>
-  getRange(from, to).map((codePoint) => String.fromCodePoint(codePoint));
+export const getCharRange = (
+  from: number,
+  to: number,
+  negative = false
+): string[] => {
+  if (negative) {
+    return asciiRange
+      .filter((codePoint) => codePoint < from || codePoint > to)
+      .map((codePoint) => String.fromCodePoint(codePoint));
+  }
+
+  return getRange(from, to).map((codePoint) => String.fromCodePoint(codePoint));
+};
+
+const asciiRange = getRange(32, 126);
 
 export const Generator = {
   map: <T, U>(f: (t: T) => U, g: Generator<T>) =>

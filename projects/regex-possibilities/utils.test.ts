@@ -1,5 +1,14 @@
 import { expect, test, describe } from "bun:test";
-import { Generator, getNResults } from "./utils";
+import { Generator, getCharRange, getNResults } from "./utils";
+
+describe("ranges", () => {
+  test("char range", () => {
+    expect(getCharRange(33, 33, false)).toEqual(["!"]);
+  });
+  test("negative char range", () => {
+    expect(getCharRange(34, 126, true)).toEqual([" ", "!"]);
+  });
+});
 
 describe("Generator", () => {
   describe("repeat", () => {

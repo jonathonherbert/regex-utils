@@ -13,17 +13,12 @@ import type {
   Repetition,
   Quantifier,
 } from "regexp-tree/ast";
-import { either as E } from "fp-ts";
-import { Generator, getNResults } from "./utils";
+import { Generator, getCharRange, getNResults } from "./utils";
 
-export const getPossibilities = (expr: string, limit = Infinity) => {
-  const exprAst = E.tryCatch(
-    () => regex.parse(expr as string),
-    (err: unknown) =>
-      err instanceof Error ? err : Error("unexpected error when parsing json")
-  );
+export const getPossibilities = (expr: string, limit = Infinity): string[] => {
+  const ast = regex.parse(expr);
 
-  return E.map(getMatchFromAst(limit))(exprAst);
+  return getMatchFromAst(limit)(ast);
 };
 
 const generators = {
@@ -46,10 +41,14 @@ const generators = {
       combineSources(node.expressions.map(getGeneratorFromNode))
     );
   },
-  Assertion: (node: Assertion) => noopIter(),
-  CharacterClass: (node: CharacterClass) => noopIter(),
-  ClassRange: (node: ClassRange) => noopIter(),
-  Backreference: (node: Backreference) => noopIter(),
+  Assertion: (node: Assertion) => noopIter(node),
+  CharacterClass: (node: CharacterClass) => {
+    return Generator.concat(node.expressions.map(getGeneratorFromNode));
+  },
+  ClassRange: (node: ClassRange) => {
+    return Generator.fromArray(getCharRange(node.from.codePoint, node.to.codePoint));
+  },
+  Backreference: (node: Backreference) => noopIter(node),
   Group: (node: Group) => {
     return getGeneratorFromNode(node.expression);
   },
@@ -69,10 +68,11 @@ const generators = {
 
     return Generator.repeat(getGeneratorFromNode(node.expression), from, to);
   },
-  Quantifier: (node: Quantifier) => noopIter(),
+  Quantifier: (node: Quantifier) => noopIter(node),
 } as const;
 
-const noopIter = () => {
+const noopIter = (node: AstNode) => {
+  console.log(`No generator for ${node.type}`)
   return Generator.fromArray([]);
 };
 

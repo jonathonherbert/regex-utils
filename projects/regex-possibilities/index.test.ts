@@ -8,10 +8,7 @@ const assertRegexPossibilities = (
   regex: string,
   expected: string[],
   limit = Infinity
-) => {
-  const source = getPossibilities(regex, limit);
-  expect(E.getOrElse(() => [""])(source)).toEqual(expected);
-};
+) => expect(getPossibilities(regex, limit)).toEqual(expected);
 
 describe("possibilities", () => {
   test("disjunct", () => {
@@ -43,6 +40,14 @@ describe("possibilities", () => {
 
   test("quantifiers", () => {
     assertRegexPossibilities("/ab?c/", ["ac", "abc"]);
+  });
+
+  test("character class - single char", () => {
+    assertRegexPossibilities("/[a]/", ["a"]);
+  });
+
+  test("character class - multiple chars", () => {
+    assertRegexPossibilities("/[a-bA-B]/", ["a", "b", "A", "B"]);
   });
 
   test("example 1", () => {

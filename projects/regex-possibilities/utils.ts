@@ -11,6 +11,14 @@ export const getNResults = <T>(gen: Generator<T>, n = Infinity) => {
   return results;
 };
 
+export const getRange = (min: number, max: number): number[] =>
+  Array(max - min + 1)
+    .fill(0)
+    .map((_, i) => min + i);
+
+export const getCharRange = (from: number, to: number): string[] =>
+  getRange(from, to).map((codePoint) => String.fromCodePoint(codePoint));
+
 export const Generator = {
   map: <T, U>(f: (t: T) => U, g: Generator<T>) =>
     function* () {

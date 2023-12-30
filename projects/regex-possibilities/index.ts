@@ -14,6 +14,7 @@ import type {
   Quantifier,
 } from "regexp-tree/ast";
 import { either as E } from "fp-ts";
+import { Generator, getNResults } from "./utils";
 
 export const getPossibilities = (expr: string, limit = Infinity) => {
   const exprAst = E.tryCatch(
@@ -25,65 +26,65 @@ export const getPossibilities = (expr: string, limit = Infinity) => {
   return E.map(getMatchFromAst(limit))(exprAst);
 };
 
-const Generator = {
-  map: <T, U>(f: (t: T) => U, g: Generator<T>) => function*() {
-    for (const x of g) {
-      yield f(x);
-    }
-  }
-}
-
-/**
- * Flatten the result of each generation
- */
-const flattenGen = <T extends Array<any>>(gen: Generator<T>) => Generator.map(arr => console.log(arr) || arr.flat(), gen);
-
-const concatGen = <T extends Array<any>>(gen: Generator<T>) => Generator.map(arr => arr.join(""), gen)();
-
-const generators: Record<string, (n: AstNode) => Generator<string, void, unknown>> = {
-  Char:
-    (node: Char) => {
-      return createSource([node.value]);
-    },
-  Disjunction: (node: Disjunction) => {
+const generators = {
+  Char: (node: Char) => {
+    return Generator.fromArray([node.value]);
+  },
+  Disjunction: (node: Disjunction): Generator<string> => {
     const left = getGeneratorFromNode(node.left);
     const right = getGeneratorFromNode(node.right);
 
-    return combineSources([left, right].filter(Boolean) as Generator<string>[]);
+    return Generator.concat(
+      [left, right].filter(Boolean) as Generator<string>[]
+    );
   },
   RegExp: (node: AstRegExp) => {
     return getGeneratorFromNode(node.body);
   },
   Alternative: (node: Alternative) => {
-    return concatGen(combineSources(node.expressions.map(getGeneratorFromNode)));
+    return Generator.join(
+      combineSources(node.expressions.map(getGeneratorFromNode))
+    );
   },
   Assertion: (node: Assertion) => noopIter(),
-  CharacterClass: (node: CharacterClass) =>
-    noopIter(),
+  CharacterClass: (node: CharacterClass) => noopIter(),
   ClassRange: (node: ClassRange) => noopIter(),
-  Backreference: (node: Backreference) =>
-    noopIter(),
+  Backreference: (node: Backreference) => noopIter(),
   Group: (node: Group) => {
     return getGeneratorFromNode(node.expression);
   },
-  Repetition: (node: Repetition) => noopIter(),
+  Repetition: (node: Repetition) => {
+    const { from, to } = (() => {
+      switch (node.quantifier.kind) {
+        case "Range":
+          return { from: node.quantifier.from, to: node.quantifier.to };
+        case "+":
+          return { from: 1, to: Infinity };
+        case "*":
+          return { from: 0, to: Infinity };
+        case "?":
+          return { from: 0, to: 1 };
+      }
+    })();
+
+    return Generator.repeat(getGeneratorFromNode(node.expression), from, to);
+  },
   Quantifier: (node: Quantifier) => noopIter(),
 } as const;
 
 const noopIter = () => {
-  console.log('noop')
+  return Generator.fromArray([]);
 };
 
 const getMatchFromAst = (limit: number) => (ast: AstRegExp) => {
-  console.log(ast);
-  return getNResults(getGeneratorFromNode(ast), limit)
+  return getNResults(getGeneratorFromNode(ast), limit);
 };
 
 function getGeneratorFromNode<T extends AstNode>(
-  node: T | null,
-) {
+  node: T | null
+): Generator<string> {
   if (!node) {
-    return createSource([]);
+    return Generator.fromArray([]);
   }
 
   switch (node.type) {
@@ -112,19 +113,9 @@ function getGeneratorFromNode<T extends AstNode>(
   }
 }
 
-
-/**
- * @param {Array<string>} output
- */
-export const createSource = (output: string[]) => {
-  return (function* () {
-    for (const element of output) {
-      yield element;
-    }
-  })();
-};
-
-export function* combineSources(sources: Generator<string | string[]>[]): Generator<string[]> {
+export function* combineSources<T>(
+  sources: Generator<T | T[]>[]
+): Generator<T[]> {
   let sourceIndex = 0;
 
   // Seed each source with at least one
@@ -195,15 +186,4 @@ export function* combineSources(sources: Generator<string | string[]>[]): Genera
   }
 }
 
-export const getNResults = (gen: Generator<string[]>, n = Infinity) => {
-  let i = 0;
-  let hasWork = true;
-  const results = [];
-  while (i < n && hasWork) {
-    const { value, done } = gen.next();
-    if (!done) results.push(value);
-    hasWork = !done;
-    i++;
-  }
-  return results;
-};
+

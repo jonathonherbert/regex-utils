@@ -1,6 +1,6 @@
 import { either as E } from "fp-ts";
 import { expect, test, describe } from "bun:test";
-import { combineSources } from "./";
+import { combineSources } from "./index.ts";
 import { getPossibilities } from "./index.ts";
 import { Generator, getNResults } from "./utils.ts";
 

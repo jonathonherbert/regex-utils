@@ -1,5 +1,5 @@
 {
-  "name": "regex-possibilities",
+  "name": "regex-enumerate-matches",
   "module": "index.ts",
   "type": "module",
   "devDependencies": {

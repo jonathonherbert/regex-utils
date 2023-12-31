@@ -1,4 +1,4 @@
-import regex from "regexp-tree";
+import { parse } from "regexp-tree";
 import type {
   AstRegExp,
   AstNode,
@@ -20,7 +20,7 @@ import { Generator, getCharRange, getNResults } from "./utils";
  * expressions.
  */
 export const generateMatches = (expr: string): Generator<string> =>
-  getGeneratorFromNode(regex.parse(expr));
+  getGeneratorFromNode(parse(expr));
 
 /**
  * Enumerate all possible matches for the given regular expression.

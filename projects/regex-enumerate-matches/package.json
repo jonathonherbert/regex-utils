@@ -12,5 +12,6 @@
     "build": "bun build --target=node ./src/index.ts --outfile=dist/index.js && bun run build:declaration",
     "build:declaration": "tsc --emitDeclarationOnly --noEmit false --declaration --outDir ./dist --outFile ./dist/index.d.ts --verbatimModuleSyntax false"
   },
-  "type": "module"
+  "type": "module",
+  "version": "1.0.0"
 }

@@ -19,7 +19,6 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true
   },
-  "exclude": [
-    "./dist/**/*"
-]
+  "include": ["./src/index.ts"],
+  "exclude": ["./dist/**/*"]
 }

@@ -15,11 +15,18 @@ import type {
 } from "regexp-tree/ast";
 import { Generator, getCharRange, getNResults } from "./utils";
 
-export const enumerateMatches = (expr: string, limit = Infinity): string[] => {
-  const ast = regex.parse(expr);
+/**
+ * Return a generator that will yield all possible matches for the given regular
+ * expressions.
+ */
+export const generateMatches = (expr: string): Generator<string> =>
+  getGeneratorFromNode(regex.parse(expr));
 
-  return getMatchFromAst(limit)(ast);
-};
+/**
+ * Enumerate all possible matches for the given regular expression.
+ */
+export const enumerateMatches = (expr: string, limit = Infinity): string[] =>
+  getNResults(generateMatches(expr), limit);
 
 const generators = {
   Char: (node: Char, negative = false) => {
@@ -40,7 +47,9 @@ const generators = {
   },
   Alternative: (node: Alternative) => {
     return Generator.join(
-      combineOrderedSources(node.expressions.map(node => getGeneratorFromNode(node)))
+      combineOrderedSources(
+        node.expressions.map((node) => getGeneratorFromNode(node))
+      )
     );
   },
   Assertion: (node: Assertion) => noopIter(node),
@@ -82,10 +91,6 @@ const noopIter = (node: AstNode) => {
   return Generator.fromArray([]);
 };
 
-const getMatchFromAst = (limit: number) => (ast: AstRegExp) => {
-  return getNResults(getGeneratorFromNode(ast), limit);
-};
-
 function getGeneratorFromNode<T extends AstNode>(
   node: T | null,
   negative = false
@@ -122,13 +127,16 @@ function getGeneratorFromNode<T extends AstNode>(
 
 /**
  * Yield all possible combinations of an ordered array of sources.
+ *
+ * For example, for two generators that will return (1, 2) and (3, 4), yields
+ * [1, 3], [1, 4], [2, 3], [2, 4].
  */
 export function* combineOrderedSources<T>(
   sources: Generator<T | T[]>[]
 ): Generator<T[]> {
   let sourceIndex = 0;
 
-  // Seed each source with at least one
+  // Seed each source with at least one output
   const sourcesAndOutput = sources.map((source) => {
     const { value } = source.next();
     return { source, output: [value], index: 0 };
@@ -180,7 +188,8 @@ export function* combineOrderedSources<T>(
     const isBeyondLastIndex = current.index > current.output.length - 1;
 
     if (isBeyondLastIndex) {
-      // Reset the current source, and move to the next source with an available element
+      // Reset the current source, and move to the next source with an available
+      // element
       current.index = 0;
       let nextIndex = sourceIndex + 1;
       while (true) {

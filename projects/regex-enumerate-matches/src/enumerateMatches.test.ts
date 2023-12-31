@@ -1,13 +1,12 @@
 import { expect, test, describe } from "bun:test";
-import { combineSources } from "./index.ts";
-import { getPossibilities } from "./index.ts";
+import { combineOrderedSources, enumerateMatches } from "./enumerateMatches.ts";
 import { Generator, getNResults } from "./utils.ts";
 
 const assertRegexPossibilities = (
   regex: string,
   expected: string[],
   limit = Infinity
-) => expect(getPossibilities(regex, limit)).toEqual(expected);
+) => expect(enumerateMatches(regex, limit)).toEqual(expected);
 
 describe("possibilities", () => {
   test("disjunct", () => {
@@ -63,15 +62,15 @@ describe("possibilities", () => {
   });
 });
 
-describe("combineSources", () => {
+describe("combineOrderedSources", () => {
   test("one list", () => {
-    const source = combineSources([Generator.fromArray([1, 2, 3])]);
+    const source = combineOrderedSources([Generator.fromArray([1, 2, 3])]);
     const result = getNResults(source);
     expect(result).toEqual([[1], [2], [3]]);
   });
 
   test("two lists", () => {
-    const source = combineSources([
+    const source = combineOrderedSources([
       Generator.fromArray([1, 2, 3]),
       Generator.fromArray([4, 5, 6]),
     ]);
@@ -90,7 +89,7 @@ describe("combineSources", () => {
   });
 
   test("generator behaviour", () => {
-    const source = combineSources([
+    const source = combineOrderedSources([
       Generator.fromArray([1, 2, 3]),
       Generator.fromArray([4, 5, 6]),
     ]);
@@ -118,7 +117,7 @@ describe("combineSources", () => {
   });
 
   test("four lists", () => {
-    const source = combineSources([
+    const source = combineOrderedSources([
       Generator.fromArray([1, 2]),
       Generator.fromArray([3, 4]),
       Generator.fromArray([5, 6]),
@@ -146,9 +145,9 @@ describe("combineSources", () => {
   });
 
   test("nested lists", () => {
-    const source = combineSources([
+    const source = combineOrderedSources([
       Generator.fromArray([1, 2]),
-      combineSources([
+      combineOrderedSources([
         Generator.fromArray([3, 4]),
         Generator.fromArray([5, 6]),
       ]),
@@ -167,7 +166,7 @@ describe("combineSources", () => {
   });
 
   test("single entities", () => {
-    const source = combineSources([
+    const source = combineOrderedSources([
       Generator.fromArray(["a"]),
       Generator.fromArray(["b"]),
     ]);

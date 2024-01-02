@@ -52,6 +52,27 @@ describe("possibilities", () => {
     assertRegexPossibilities("/[^!-z]/", [" ", "{", "|", "}", "~"]);
   });
 
+  test("backreferences - single backreference", () => {
+    assertRegexPossibilities("/(b)\\1/", ["bb"]);
+  });
+
+  test("backreferences - correctly adjust values on each iteration", () => {
+    assertRegexPossibilities("/(a|b|c)\\1/", ["aa", "bb", "cc"]);
+  });
+
+  test("backreferences - single backreference without capturing group", () => {
+    assertRegexPossibilities("/(\\1a(a))/", ["aa"]);
+  });
+
+  test("backreferences -  ", () => {
+    assertRegexPossibilities("/((a|b)(c|d))\\1\\2\\3/", [
+      "acacac",
+      "bcbcbc",
+      "adadbd",
+      "bdbdbd",
+    ]);
+  });
+
   test("example 1", () => {
     assertRegexPossibilities("/Camilla Parker ?-?Bowles/", [
       "Camilla ParkerBowles",
@@ -59,6 +80,25 @@ describe("possibilities", () => {
       "Camilla Parker-Bowles",
       "Camilla Parker -Bowles",
     ]);
+  });
+  test("example 2", () => {
+    assertRegexPossibilities(
+      "/Camilla,? (Parker ?-?Bowles|(the)? Queen Consort)/",
+      [
+        "Camilla ParkerBowles",
+        "Camilla, ParkerBowles",
+        "Camilla Parker Bowles",
+        "Camilla, Parker Bowles",
+        "Camilla Parker-Bowles",
+        "Camilla, Parker-Bowles",
+        "Camilla Parker -Bowles",
+        "Camilla, Parker -Bowles",
+        "Camilla  Queen Consort",
+        "Camilla,  Queen Consort",
+        "Camilla the Queen Consort",
+        "Camilla, the Queen Consort",
+      ]
+    );
   });
 });
 

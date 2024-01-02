@@ -1,1 +1,1 @@
-export { enumerateMatches } from "./enumerateMatches.ts";
+export { enumerateMatches, generateMatches } from "./enumerateMatches.ts";

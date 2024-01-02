@@ -34,24 +34,41 @@ const asciiRange = getRange(32, 126);
 
 export const Generator = {
   map: <T, U>(f: (t: T) => U, g: Generator<T>) =>
-    function* () {
+    (function* () {
       for (const x of g) {
         yield f(x);
       }
-    },
+    })(),
+
+  forEach: <T>(f: (t: T) => void, g: Generator<T>) =>
+    (function* () {
+      for (const x of g) {
+        f(x);
+        yield x;
+      }
+    })(),
+
+  pipe: <T>(fs: ((t: T) => T)[], g: Generator<T>) =>
+    (function* () {
+      const [f, ...rest] = fs;
+      for (const x of g) {
+        const seed = f(x);
+        yield rest.reduce((acc, f) => f(acc), seed);
+      }
+    })(),
 
   flatten: <T extends Array<any>>(gen: Generator<T>) => {
-    return Generator.map((arr) => arr.flat(), gen)();
+    return Generator.map((arr) => arr.flat(), gen);
   },
 
   join: <T extends Array<any>>(gen: Generator<T>, separator = "") =>
-    Generator.map((arr) => arr.join(separator), gen)(),
+    Generator.map((arr) => arr.join(separator), gen),
 
   log: <T extends Array<any>>(gen: Generator<T>) =>
     Generator.map((arr) => {
       console.log("log", arr);
       return arr;
-    }, gen)(),
+    }, gen),
 
   concat: function* <T>(gens: Generator<T>[]) {
     for (const gen of gens) {
@@ -89,3 +106,5 @@ export const Generator = {
     }
   },
 };
+
+export const getGroupId = (groupNumber: string) => `$__GROUP${groupNumber}__$`;

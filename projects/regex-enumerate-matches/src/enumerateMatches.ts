@@ -13,14 +13,19 @@ import type {
   Repetition,
   Quantifier,
 } from "regexp-tree/ast";
-import { Generator, getCharRange, getNResults } from "./utils";
+import { Generator, getCharRange, getGroupId, getNResults } from "./utils";
+
+export type MatchContext = {
+  groups: Record<string, string>;
+  backreferences: Record<string, string>;
+};
 
 /**
  * Return a generator that will yield all possible matches for the given regular
  * expressions.
  */
 export const generateMatches = (expr: string): Generator<string> =>
-  getGeneratorFromNode(parse(expr));
+  getGeneratorFromNode(parse(expr, { allowGroupNameDuplicates: false }));
 
 /**
  * Enumerate all possible matches for the given regular expression.
@@ -29,45 +34,74 @@ export const enumerateMatches = (expr: string, limit = Infinity): string[] =>
   getNResults(generateMatches(expr), limit);
 
 const generators = {
-  Char: (node: Char, negative = false) => {
+  Char: (node: Char, context: MatchContext, negative = false) => {
     return Generator.fromArray(
       getCharRange(node.codePoint, node.codePoint, negative)
     );
   },
-  Disjunction: (node: Disjunction): Generator<string> => {
-    const left = getGeneratorFromNode(node.left);
-    const right = getGeneratorFromNode(node.right);
+  Disjunction: (
+    node: Disjunction,
+    context: MatchContext
+  ): Generator<string> => {
+    const left = getGeneratorFromNode(node.left, context);
+    const right = getGeneratorFromNode(node.right, context);
 
     return Generator.concat(
       [left, right].filter(Boolean) as Generator<string>[]
     );
   },
-  RegExp: (node: AstRegExp) => {
-    return getGeneratorFromNode(node.body);
+  RegExp: (node: AstRegExp, context: MatchContext) => {
+    return Generator.pipe(
+      [
+        // We replace backreferences with values from their groups
+        addBackreferencesFromGroups(context),
+        // Any backreferences that don't have matching groups are stripped
+        stripEmptyBackreferences(context),
+      ],
+      getGeneratorFromNode(node.body, context)
+    );
   },
-  Alternative: (node: Alternative) => {
+  Alternative: (node: Alternative, context: MatchContext) => {
     return Generator.join(
       combineOrderedSources(
-        node.expressions.map((node) => getGeneratorFromNode(node))
+        node.expressions.map((node) => getGeneratorFromNode(node, context))
       )
     );
   },
-  Assertion: (node: Assertion) => noopIter(node),
-  CharacterClass: (node: CharacterClass) => {
+  Assertion: (node: Assertion, context: MatchContext) => noopIter(node),
+  CharacterClass: (node: CharacterClass, context: MatchContext) => {
     return Generator.concat(
-      node.expressions.map((expr) => getGeneratorFromNode(expr, node.negative))
+      node.expressions.map((expr) =>
+        getGeneratorFromNode(expr, context, node.negative)
+      )
     );
   },
-  ClassRange: (node: ClassRange, negative = false) => {
+  ClassRange: (node: ClassRange, context: MatchContext, negative = false) => {
     return Generator.fromArray(
       getCharRange(node.from.codePoint, node.to.codePoint, negative)
     );
   },
-  Backreference: (node: Backreference) => noopIter(node),
-  Group: (node: Group) => {
-    return getGeneratorFromNode(node.expression);
+  Backreference: (node: Backreference, context: MatchContext) => {
+    return Generator.forEach((result) => {
+      // Only apply a backreference if a matching group already exists - see
+      // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Backreference#description
+      if (context.groups[node.number.toString()]) {
+        context.backreferences[node.number.toString()] = result;
+      }
+    }, Generator.fromArray([getGroupId(node.number.toString())]));
   },
-  Repetition: (node: Repetition) => {
+  Group: (node: Group, context: MatchContext) => {
+    const generator = getGeneratorFromNode(node.expression, context);
+
+    if (!node.capturing) {
+      return generator;
+    }
+
+    return Generator.forEach((result) => {
+      context.groups[node.number.toString()] = result;
+    }, generator);
+  },
+  Repetition: (node: Repetition, context: MatchContext) => {
     const { from, to } = (() => {
       switch (node.quantifier.kind) {
         case "Range":
@@ -81,7 +115,11 @@ const generators = {
       }
     })();
 
-    return Generator.repeat(getGeneratorFromNode(node.expression), from, to);
+    return Generator.repeat(
+      getGeneratorFromNode(node.expression, context),
+      from,
+      to
+    );
   },
   Quantifier: (node: Quantifier) => noopIter(node),
 } as const;
@@ -93,6 +131,7 @@ const noopIter = (node: AstNode) => {
 
 function getGeneratorFromNode<T extends AstNode>(
   node: T | null,
+  context: MatchContext = { groups: {}, backreferences: {} },
   negative = false
 ): Generator<string> {
   if (!node) {
@@ -101,25 +140,25 @@ function getGeneratorFromNode<T extends AstNode>(
 
   switch (node.type) {
     case "RegExp":
-      return generators.RegExp(node);
+      return generators.RegExp(node, context);
     case "Disjunction":
-      return generators.Disjunction(node);
+      return generators.Disjunction(node, context);
     case "Alternative":
-      return generators.Alternative(node);
+      return generators.Alternative(node, context);
     case "Assertion":
-      return generators.Assertion(node);
+      return generators.Assertion(node, context);
     case "Char":
-      return generators.Char(node, negative);
+      return generators.Char(node, context, negative);
     case "CharacterClass":
-      return generators.CharacterClass(node);
+      return generators.CharacterClass(node, context);
     case "ClassRange":
-      return generators.ClassRange(node, negative);
+      return generators.ClassRange(node, context, negative);
     case "Backreference":
-      return generators.Backreference(node);
+      return generators.Backreference(node, context);
     case "Group":
-      return generators.Group(node);
+      return generators.Group(node, context);
     case "Repetition":
-      return generators.Repetition(node);
+      return generators.Repetition(node, context);
     case "Quantifier":
       return generators.Quantifier(node);
   }
@@ -204,3 +243,19 @@ export function* combineOrderedSources<T>(
     }
   }
 }
+
+export const addBackreferencesFromGroups = (context: MatchContext) => (result: string) =>
+  Object.entries(context.groups).reduce(
+    (acc, [groupNumber, groupValue]) =>
+      context.backreferences[groupNumber]
+        ? acc.replaceAll(getGroupId(groupNumber), groupValue)
+        : acc,
+    result
+  );
+
+export const stripEmptyBackreferences =
+  (context: MatchContext) => (result: string) =>
+    Object.entries(context.groups).reduce(
+      (acc, [groupNumber]) => acc.replaceAll(getGroupId(groupNumber), ""),
+      result
+    );

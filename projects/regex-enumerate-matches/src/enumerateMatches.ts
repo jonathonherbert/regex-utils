@@ -34,7 +34,7 @@ export const enumerateMatches = (expr: string, limit = Infinity): string[] =>
   getNResults(generateMatches(expr), limit);
 
 const generators = {
-  Char: (node: Char, context: MatchContext, negative = false) => {
+  Char: (node: Char, negative = false) => {
     return Generator.fromArray(
       getCharRange(node.codePoint, node.codePoint, negative)
     );
@@ -68,7 +68,7 @@ const generators = {
       )
     );
   },
-  Assertion: (node: Assertion, context: MatchContext) => noopIter(node),
+  Assertion: (node: Assertion) => noopIter(node),
   CharacterClass: (node: CharacterClass, context: MatchContext) => {
     return Generator.concat(
       node.expressions.map((expr) =>
@@ -76,7 +76,7 @@ const generators = {
       )
     );
   },
-  ClassRange: (node: ClassRange, context: MatchContext, negative = false) => {
+  ClassRange: (node: ClassRange, negative = false) => {
     return Generator.fromArray(
       getCharRange(node.from.codePoint, node.to.codePoint, negative)
     );
@@ -131,6 +131,7 @@ const noopIter = (node: AstNode) => {
 
 function getGeneratorFromNode<T extends AstNode>(
   node: T | null,
+  // A new context is generated once per iteration, accruing group and backreference data
   context: MatchContext = { groups: {}, backreferences: {} },
   negative = false
 ): Generator<string> {
@@ -146,13 +147,13 @@ function getGeneratorFromNode<T extends AstNode>(
     case "Alternative":
       return generators.Alternative(node, context);
     case "Assertion":
-      return generators.Assertion(node, context);
+      return generators.Assertion(node);
     case "Char":
-      return generators.Char(node, context, negative);
+      return generators.Char(node, negative);
     case "CharacterClass":
       return generators.CharacterClass(node, context);
     case "ClassRange":
-      return generators.ClassRange(node, context, negative);
+      return generators.ClassRange(node, negative);
     case "Backreference":
       return generators.Backreference(node, context);
     case "Group":

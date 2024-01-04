@@ -1,7 +1,7 @@
 import type { AstNode } from "regexp-tree/ast";
 import type { GeneratorOutput } from "./enumerateMatches";
 
-export const getNResults = <T>(gen: Generator<T>, n = Infinity) => {
+export const getNResults = <T>(gen: Generator<T>, n = Infinity): T[] => {
   let i = 0;
   let hasWork = true;
   const results = [];
@@ -95,22 +95,21 @@ export const Generator = {
     from: number,
     to = Infinity
   ): Generator<GeneratorOutput> {
-    let index = 0;
     if (from === 0) {
-      yield { value: "", node, index, children: [] };
+      yield { value: "", node, children: [] };
     }
 
-    const results = [];
+    const results: GeneratorOutput[] = [];
     for (const x of gen) {
-      index++;
-      yield { value: x.value, node, index, children: [x] };
-      results.push(x);
+      const result = { value: x.value, node, children: [x] };
+      yield result;
+      results.push(result);
     }
 
     let i = 2;
     while (i <= to) {
       for (const x of results) {
-        yield { value: x.value.repeat(i), node, index, children: [x] };
+        yield { value: x.value.repeat(i), node, children: [x] };
       }
       i++;
     }
@@ -118,3 +117,29 @@ export const Generator = {
 };
 
 export const getGroupId = (groupNumber: string) => `$__GROUP${groupNumber}__$`;
+
+export const getGeneratorOutputFromBranchNode = (
+  node: AstNode,
+  source: Generator<GeneratorOutput>
+): Generator<GeneratorOutput> =>
+  Generator.map(
+    (result) => ({
+      value: result.value,
+      node,
+      children: [result],
+    }),
+    source
+  );
+
+export const getGeneratorOutputFromLeafNode = (
+  node: AstNode,
+  source: Generator<string>
+): Generator<GeneratorOutput> =>
+  Generator.map(
+    (result) => ({
+      value: result,
+      node,
+      children: [],
+    }),
+    source
+  );

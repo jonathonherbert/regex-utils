@@ -1,5 +1,11 @@
 import { expect, test, describe } from "bun:test";
-import { Generator, getCharRange, getNResults } from "./utils";
+import {
+  Generator,
+  getCharRange,
+  getGeneratorOutputFromLeafNode,
+  getNResults,
+} from "./utils";
+import { GeneratorOutput } from "./enumerateMatches";
 
 describe("ranges", () => {
   test("char range", () => {
@@ -12,22 +18,28 @@ describe("ranges", () => {
 
 describe("Generator", () => {
   describe("repeat", () => {
-    test("0-1", () => {
-      const source = Generator.repeat(Generator.fromArray(["a"]), 0, 1);
+    const noopNode = {} as any;
+    const generatesAs = () =>
+      getGeneratorOutputFromLeafNode(noopNode, Generator.fromArray(["a"]));
+    const getAllValues = (source: Generator<GeneratorOutput>) =>
+      getNResults(source).map((r) => r.value);
 
-      expect(getNResults(source)).toEqual(["", "a"]);
+    test("0-1", () => {
+      const source = Generator.repeat(generatesAs(), noopNode, 0, 1);
+
+      expect(getAllValues(source)).toEqual(["", "a"]);
     });
 
     test("1-2", () => {
-      const source = Generator.repeat(Generator.fromArray(["a"]), 1, 2);
+      const source = Generator.repeat(generatesAs(), noopNode, 1, 2);
 
-      expect(getNResults(source)).toEqual(["a", "aa"]);
+      expect(getAllValues(source)).toEqual(["a", "aa"]);
     });
 
     test("0-many", () => {
-      const source = Generator.repeat(Generator.fromArray(["a"]), 0, 5);
+      const source = Generator.repeat(generatesAs(), noopNode, 0, 5);
 
-      expect(getNResults(source)).toEqual([
+      expect(getAllValues(source)).toEqual([
         "",
         "a",
         "aa",
@@ -38,9 +50,15 @@ describe("Generator", () => {
     });
 
     test("1-many", () => {
-      const source = Generator.repeat(Generator.fromArray(["a"]), 1, 5);
+      const source = Generator.repeat(generatesAs(), noopNode, 1, 5);
 
-      expect(getNResults(source)).toEqual(["a", "aa", "aaa", "aaaa", "aaaaa"]);
+      expect(getAllValues(source)).toEqual([
+        "a",
+        "aa",
+        "aaa",
+        "aaaa",
+        "aaaaa",
+      ]);
     });
   });
 });

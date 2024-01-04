@@ -1,6 +1,11 @@
 import { parse } from "regexp-tree";
-import type { AstNode, AstClass, AstClassMap, AstRegExp } from "regexp-tree/ast";
-import { Generator, getCharRange, getGroupId, getNResults } from "./utils";
+import type {
+  AstNode,
+  AstClass,
+  AstClassMap,
+  AstRegExp,
+} from "regexp-tree/ast";
+import { Generator, getCharRange, getGeneratorOutputFromBranchNode, getGeneratorOutputFromLeafNode, getGroupId, getNResults } from "./utils";
 
 export type MatchContext = {
   groups: Record<string, string>;
@@ -10,7 +15,6 @@ export type MatchContext = {
 export type GeneratorOutput = {
   node: AstNode;
   value: string;
-  index: number;
   children: GeneratorOutput[];
 };
 
@@ -29,8 +33,9 @@ export const generateMatches = (expr: string): Generator<string> =>
  * expressions. The output contains information about the nodes that yielded the
  * result.
  */
-export const generateMatchesViz = (node: AstRegExp): Generator<GeneratorOutput> =>
-  getGeneratorFromNode(node);
+export const generateMatchesViz = (
+  node: AstRegExp
+): Generator<GeneratorOutput> => getGeneratorFromNode(node);
 
 /**
  * Enumerate all possible matches for the given regular expression.
@@ -48,96 +53,80 @@ type Generators = {
 
 const generators: Generators = {
   Char: (node, _, negative = false): Generator<GeneratorOutput> => {
-    return Generator.map(
-      (value) => ({ value, index: 0, node, children: [] }),
-      Generator.fromArray(
-        getCharRange(node.codePoint, node.codePoint, negative)
-      )
+    const source = Generator.fromArray(
+      getCharRange(node.codePoint, node.codePoint, negative)
     );
+    return getGeneratorOutputFromLeafNode(node, source);
   },
   Disjunction: (node, context): Generator<GeneratorOutput> => {
     const left = getGeneratorFromNode(node.left, context);
     const right = getGeneratorFromNode(node.right, context);
-    let index = 0;
+    const source = Generator.concat([left, right].filter(Boolean));
 
-    return Generator.map((childResult) => {
-      const result = {
-        value: childResult.value,
-        index,
-        node,
-        children: [childResult],
-      };
-      index++;
-      return result;
-    }, Generator.concat([left, right].filter(Boolean)));
+    return getGeneratorOutputFromBranchNode(node, source);
   },
   RegExp: (node, context) => {
-    return Generator.map(
-      (r) => ({
-        value: stripEmptyBackreferences(context)(
-          addBackreferencesFromGroups(context)(r.value)
-        ),
-        index: 0,
-        children: [r],
-        node
-      }),
+    const source = Generator.pipe(
+      [addBackreferencesFromGroups(context), stripEmptyBackreferences(context)],
       getGeneratorFromNode(node.body, context)
     );
+
+    return getGeneratorOutputFromBranchNode(node, source);
   },
   Alternative: (node, context): Generator<GeneratorOutput> => {
+    const sources = combineOrderedSources(
+      node.expressions.map((node) => getGeneratorFromNode(node, context))
+    );
+
     return Generator.map(
       (results) => ({
         value: results.map((_) => _.value).join(""),
-        index: 0,
         children: results,
         node,
       }),
-      combineOrderedSources(
-        node.expressions.map((node) => getGeneratorFromNode(node, context))
-      )
+      sources
     );
   },
   Assertion: (node) => noopIter(node),
   CharacterClass: (node, context): Generator<GeneratorOutput> => {
-    return Generator.concat(
+    const source = Generator.concat(
       node.expressions.map((expr) =>
         getGeneratorFromNode(expr, context, node.negative)
       )
     );
+
+    return getGeneratorOutputFromBranchNode(node, source);
   },
   ClassRange: (node, _, negative = false): Generator<GeneratorOutput> => {
-    return Generator.map(
-      (value) => ({ value, index: 0, node, children: [] }),
-      Generator.fromArray(
-        getCharRange(node.from.codePoint, node.to.codePoint, negative)
-      )
+    const source = Generator.fromArray(
+      getCharRange(node.from.codePoint, node.to.codePoint, negative)
     );
+
+    return getGeneratorOutputFromLeafNode(node, source);
   },
   Backreference: (node, context): Generator<GeneratorOutput> => {
-    return Generator.map(
-      (value) => ({ value, index: 0, node, children: [] }),
-      Generator.forEach((result) => {
-        // Only apply a backreference if a matching group already exists - see
-        // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Backreference#description
-        if (context.groups[node.number.toString()]) {
-          context.backreferences[node.number.toString()] = result;
-        }
-      }, Generator.fromArray([getGroupId(node.number.toString())]))
-    );
+    const source = Generator.forEach((result) => {
+      // Only apply a backreference if a matching group already exists - see
+      // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Backreference#description
+      if (context.groups[node.number.toString()]) {
+        context.backreferences[node.number.toString()] = result;
+      }
+    }, Generator.fromArray([getGroupId(node.number.toString())]));
+
+    return getGeneratorOutputFromLeafNode(node, source);
   },
   Group: (node, context): Generator<GeneratorOutput> => {
     const generator = getGeneratorFromNode(node.expression, context);
 
     if (!node.capturing) {
-      return generator;
+      return getGeneratorOutputFromBranchNode(node, generator);
     }
 
-    return Generator.map(
-      (output) => ({ value: output.value, index: 0, node, children: [output] }),
-      Generator.forEach((result) => {
-        context.groups[node.number.toString()] = result.value;
-      }, generator)
-    );
+    const source = Generator.forEach((result) => {
+      context.groups[node.number.toString()] = result.value;
+    }, generator);
+
+    return getGeneratorOutputFromBranchNode(node, source);
   },
   Repetition: (node, context): Generator<GeneratorOutput> => {
     const { from, to } = (() => {
@@ -189,8 +178,8 @@ function getGeneratorFromNode<T extends AstNode>(
  * [1, 3], [1, 4], [2, 3], [2, 4].
  */
 export function* combineOrderedSources<T>(
-  sources: Generator<GeneratorOutput>[]
-): Generator<GeneratorOutput[]> {
+  sources: Generator<T | T[]>[]
+): Generator<T[]> {
   let sourceIndex = 0;
 
   // Seed each source with at least one output
@@ -263,18 +252,24 @@ export function* combineOrderedSources<T>(
 }
 
 export const addBackreferencesFromGroups =
-  (context: MatchContext) => (result: string) =>
-    Object.entries(context.groups).reduce(
+  (context: MatchContext) => (result: GeneratorOutput) => ({
+    node: result.node,
+    children: result.children,
+    value: Object.entries(context.groups).reduce(
       (acc, [groupNumber, groupValue]) =>
         context.backreferences[groupNumber]
           ? acc.replaceAll(getGroupId(groupNumber), groupValue)
           : acc,
-      result
-    );
+      result.value
+    ),
+  });
 
 export const stripEmptyBackreferences =
-  (context: MatchContext) => (result: string) =>
-    Object.entries(context.groups).reduce(
+  (context: MatchContext) => (result: GeneratorOutput) => ({
+    node: result.node,
+    children: result.children,
+    value: Object.entries(context.groups).reduce(
       (acc, [groupNumber]) => acc.replaceAll(getGroupId(groupNumber), ""),
-      result
-    );
+      result.value
+    ),
+  });

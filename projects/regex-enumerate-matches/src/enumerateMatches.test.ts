@@ -1,5 +1,9 @@
 import { expect, test, describe } from "bun:test";
-import { combineOrderedSources, enumerateMatches, generateMatchesViz } from "./enumerateMatches.ts";
+import {
+  combineOrderedSources,
+  enumerateMatches,
+  generateMatchesViz,
+} from "./enumerateMatches.ts";
 import { Generator, getNResults } from "./utils.ts";
 import { parse } from "regexp-tree";
 
@@ -227,81 +231,79 @@ describe("combineOrderedSources", () => {
 
 describe("generateMatchesViz", () => {
   test("disjunct groups containing disjunct", () => {
-    const generator = generateMatchesViz(parse("/(a|b)|(c|d)/", { allowGroupNameDuplicates: false }));
+    const generator = generateMatchesViz(
+      parse("/(a|b)|(c|d)/", { allowGroupNameDuplicates: false })
+    );
     const { value: value1 } = generator.next();
-    expect(value1).toMatchObject({
-      value: "a",
-      index: 0,
-      children: [
-        {
-          value: "a",
-          index: 0,
-          children: [
-            {
-              value: "a",
-              index: 0,
-              children: [],
-            },
-          ],
-        },
-      ],
-    });
+    expect(value1).toMatchObject(
+      expect.objectContaining({
+        value: "a",
+        children: [
+          expect.objectContaining({
+            value: "a",
+            children: [
+              expect.objectContaining({
+                value: "a",
+                children: [],
+              }),
+            ],
+          }),
+        ],
+      })
+    );
 
     const { value: value2 } = generator.next();
-    expect(value2).toMatchObject({
-      value: "b",
-      index: 1,
-      children: [
-        {
-          value: "b",
-          index: 1,
-          children: [
-            {
-              value: "b",
-              index: 0,
-              children: [],
-            },
-          ],
-        },
-      ],
-    });
+    expect(value2).toMatchObject(
+      expect.objectContaining({
+        value: "b",
+        children: [
+          expect.objectContaining({
+            value: "b",
+            children: [
+              expect.objectContaining({
+                value: "b",
+                children: [],
+              }),
+            ],
+          }),
+        ],
+      })
+    );
 
     const { value: value3 } = generator.next();
-    expect(value3).toMatchObject({
-      value: "c",
-      index: 2,
-      children: [
-        {
-          value: "c",
-          index: 0,
-          children: [
-            {
-              value: "c",
-              index: 0,
-              children: [],
-            },
-          ],
-        },
-      ],
-    });
+    expect(value3).toMatchObject(
+      expect.objectContaining({
+        value: "c",
+        children: [
+          expect.objectContaining({
+            value: "c",
+            children: [
+              expect.objectContaining({
+                value: "c",
+                children: [],
+              }),
+            ],
+          }),
+        ],
+      })
+    );
 
     const { value: value4 } = generator.next();
-    expect(value4).toMatchObject({
-      value: "d",
-      index: 3,
-      children: [
-        {
-          value: "d",
-          index: 1,
-          children: [
-            {
-              value: "d",
-              index: 0,
-              children: [],
-            },
-          ],
-        },
-      ],
-    });
+    expect(value4).toMatchObject(
+      expect.objectContaining({
+        value: "d",
+        children: [
+          expect.objectContaining({
+            value: "d",
+            children: [
+              expect.objectContaining({
+                value: "d",
+                children: [],
+              }),
+            ],
+          }),
+        ],
+      })
+    );
   });
-})
+});

@@ -1,17 +1,8 @@
 import { parse } from "regexp-tree";
 import type {
-  AstRegExp,
   AstNode,
-  Char,
-  Disjunction,
-  Alternative,
-  Assertion,
-  CharacterClass,
-  ClassRange,
-  Backreference,
-  Group,
-  Repetition,
-  Quantifier,
+  AstClass,
+  AstClassMap,
 } from "regexp-tree/ast";
 import { Generator, getCharRange, getGroupId, getNResults } from "./utils";
 
@@ -20,11 +11,29 @@ export type MatchContext = {
   backreferences: Record<string, string>;
 };
 
+export type GeneratorOutput = {
+  node: AstNode;
+  value: string;
+  index: number;
+  children: GeneratorOutput[];
+};
+
 /**
  * Return a generator that will yield all possible matches for the given regular
  * expressions.
  */
 export const generateMatches = (expr: string): Generator<string> =>
+  Generator.map(
+    (result) => result.value,
+    getGeneratorFromNode(parse(expr, { allowGroupNameDuplicates: false }))
+  );
+
+/**
+ * Return a generator that will yield all possible matches for the given regular
+ * expressions. The output contains information about the nodes that yielded the
+ * result.
+ */
+export const generateMatchesViz = (expr: string): Generator<GeneratorOutput> =>
   getGeneratorFromNode(parse(expr, { allowGroupNameDuplicates: false }));
 
 /**
@@ -33,64 +42,92 @@ export const generateMatches = (expr: string): Generator<string> =>
 export const enumerateMatches = (expr: string, limit = Infinity): string[] =>
   getNResults(generateMatches(expr), limit);
 
-const generators = {
-  Char: (node: Char, negative = false) => {
-    return Generator.fromArray(
-      getCharRange(node.codePoint, node.codePoint, negative)
+type Generators = {
+  [C in AstClass]: (
+    node: AstClassMap[C],
+    m: MatchContext,
+    negative?: boolean
+  ) => Generator<GeneratorOutput>;
+};
+
+const generators: Generators = {
+  Char: (node, _, negative = false): Generator<GeneratorOutput> => {
+    return Generator.map(
+      (value) => ({ value, index: 0, node, children: [] }),
+      Generator.fromArray(
+        getCharRange(node.codePoint, node.codePoint, negative)
+      )
     );
   },
-  Disjunction: (
-    node: Disjunction,
-    context: MatchContext
-  ): Generator<string> => {
+  Disjunction: (node, context): Generator<GeneratorOutput> => {
     const left = getGeneratorFromNode(node.left, context);
     const right = getGeneratorFromNode(node.right, context);
+    let index = 0;
 
-    return Generator.concat(
-      [left, right].filter(Boolean) as Generator<string>[]
-    );
+    return Generator.map((childResult) => {
+      const result = {
+        value: childResult.value,
+        index,
+        node,
+        children: [childResult],
+      };
+      index++;
+      return result;
+    }, Generator.concat([left, right].filter(Boolean)));
   },
-  RegExp: (node: AstRegExp, context: MatchContext) => {
-    return Generator.pipe(
-      [
-        // We replace backreferences with values from their groups
-        addBackreferencesFromGroups(context),
-        // Any backreferences that don't have matching groups are stripped
-        stripEmptyBackreferences(context),
-      ],
+  RegExp: (node, context) => {
+    return Generator.map(
+      (r) => ({
+        ...r,
+        value: stripEmptyBackreferences(context)(
+          addBackreferencesFromGroups(context)(r.value)
+        ),
+      }),
       getGeneratorFromNode(node.body, context)
     );
   },
-  Alternative: (node: Alternative, context: MatchContext) => {
-    return Generator.join(
+  Alternative: (node, context): Generator<GeneratorOutput> => {
+    return Generator.map(
+      (results) => ({
+        value: results.map((_) => _.value).join(""),
+        index: 0,
+        children: results.map((_) => _.children).flat(),
+        node,
+      }),
       combineOrderedSources(
         node.expressions.map((node) => getGeneratorFromNode(node, context))
       )
     );
   },
-  Assertion: (node: Assertion) => noopIter(node),
-  CharacterClass: (node: CharacterClass, context: MatchContext) => {
+  Assertion: (node) => noopIter(node),
+  CharacterClass: (node, context): Generator<GeneratorOutput> => {
     return Generator.concat(
       node.expressions.map((expr) =>
         getGeneratorFromNode(expr, context, node.negative)
       )
     );
   },
-  ClassRange: (node: ClassRange, negative = false) => {
-    return Generator.fromArray(
-      getCharRange(node.from.codePoint, node.to.codePoint, negative)
+  ClassRange: (node, _, negative = false): Generator<GeneratorOutput> => {
+    return Generator.map(
+      (value) => ({ value, index: 0, node, children: [] }),
+      Generator.fromArray(
+        getCharRange(node.from.codePoint, node.to.codePoint, negative)
+      )
     );
   },
-  Backreference: (node: Backreference, context: MatchContext) => {
-    return Generator.forEach((result) => {
-      // Only apply a backreference if a matching group already exists - see
-      // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Backreference#description
-      if (context.groups[node.number.toString()]) {
-        context.backreferences[node.number.toString()] = result;
-      }
-    }, Generator.fromArray([getGroupId(node.number.toString())]));
+  Backreference: (node, context): Generator<GeneratorOutput> => {
+    return Generator.map(
+      (value) => ({ value, index: 0, node, children: [] }),
+      Generator.forEach((result) => {
+        // Only apply a backreference if a matching group already exists - see
+        // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Backreference#description
+        if (context.groups[node.number.toString()]) {
+          context.backreferences[node.number.toString()] = result;
+        }
+      }, Generator.fromArray([getGroupId(node.number.toString())]))
+    );
   },
-  Group: (node: Group, context: MatchContext) => {
+  Group: (node, context): Generator<GeneratorOutput> => {
     const generator = getGeneratorFromNode(node.expression, context);
 
     if (!node.capturing) {
@@ -98,10 +135,10 @@ const generators = {
     }
 
     return Generator.forEach((result) => {
-      context.groups[node.number.toString()] = result;
+      context.groups[node.number.toString()] = result.value;
     }, generator);
   },
-  Repetition: (node: Repetition, context: MatchContext) => {
+  Repetition: (node, context): Generator<GeneratorOutput> => {
     const { from, to } = (() => {
       switch (node.quantifier.kind) {
         case "Range":
@@ -117,11 +154,12 @@ const generators = {
 
     return Generator.repeat(
       getGeneratorFromNode(node.expression, context),
+      node,
       from,
       to
     );
   },
-  Quantifier: (node: Quantifier) => noopIter(node),
+  Quantifier: (node, _) => noopIter(node),
 } as const;
 
 const noopIter = (node: AstNode) => {
@@ -131,38 +169,16 @@ const noopIter = (node: AstNode) => {
 
 function getGeneratorFromNode<T extends AstNode>(
   node: T | null,
-  // A new context is generated once per iteration, accruing group and backreference data
+  // A new context is generated once per iteration, accruing group and
+  // backreference data
   context: MatchContext = { groups: {}, backreferences: {} },
   negative = false
-): Generator<string> {
+): Generator<GeneratorOutput> {
   if (!node) {
     return Generator.fromArray([]);
   }
 
-  switch (node.type) {
-    case "RegExp":
-      return generators.RegExp(node, context);
-    case "Disjunction":
-      return generators.Disjunction(node, context);
-    case "Alternative":
-      return generators.Alternative(node, context);
-    case "Assertion":
-      return generators.Assertion(node);
-    case "Char":
-      return generators.Char(node, negative);
-    case "CharacterClass":
-      return generators.CharacterClass(node, context);
-    case "ClassRange":
-      return generators.ClassRange(node, negative);
-    case "Backreference":
-      return generators.Backreference(node, context);
-    case "Group":
-      return generators.Group(node, context);
-    case "Repetition":
-      return generators.Repetition(node, context);
-    case "Quantifier":
-      return generators.Quantifier(node);
-  }
+  return generators[node.type](node as any, context, negative);
 }
 
 /**
@@ -172,8 +188,8 @@ function getGeneratorFromNode<T extends AstNode>(
  * [1, 3], [1, 4], [2, 3], [2, 4].
  */
 export function* combineOrderedSources<T>(
-  sources: Generator<T | T[]>[]
-): Generator<T[]> {
+  sources: Generator<GeneratorOutput>[]
+): Generator<GeneratorOutput[]> {
   let sourceIndex = 0;
 
   // Seed each source with at least one output
@@ -245,14 +261,15 @@ export function* combineOrderedSources<T>(
   }
 }
 
-export const addBackreferencesFromGroups = (context: MatchContext) => (result: string) =>
-  Object.entries(context.groups).reduce(
-    (acc, [groupNumber, groupValue]) =>
-      context.backreferences[groupNumber]
-        ? acc.replaceAll(getGroupId(groupNumber), groupValue)
-        : acc,
-    result
-  );
+export const addBackreferencesFromGroups =
+  (context: MatchContext) => (result: string) =>
+    Object.entries(context.groups).reduce(
+      (acc, [groupNumber, groupValue]) =>
+        context.backreferences[groupNumber]
+          ? acc.replaceAll(getGroupId(groupNumber), groupValue)
+          : acc,
+      result
+    );
 
 export const stripEmptyBackreferences =
   (context: MatchContext) => (result: string) =>

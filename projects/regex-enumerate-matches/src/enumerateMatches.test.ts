@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { combineOrderedSources, enumerateMatches } from "./enumerateMatches.ts";
+import { combineOrderedSources, enumerateMatches, generateMatchesViz } from "./enumerateMatches.ts";
 import { Generator, getNResults } from "./utils.ts";
 
 const assertRegexPossibilities = (
@@ -100,6 +100,15 @@ describe("possibilities", () => {
       ]
     );
   });
+
+  // test('example 3', () => {
+  //   assertRegexPossibilities(
+  //     "/^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/",
+  //     [
+
+  //     ]
+  //   );
+  // })
 });
 
 describe("combineOrderedSources", () => {
@@ -214,3 +223,84 @@ describe("combineOrderedSources", () => {
     expect(result).toEqual([["a", "b"]]);
   });
 });
+
+describe("generateMatchesViz", () => {
+  test("disjunct groups containing disjunct", () => {
+    const generator = generateMatchesViz("/(a|b)|(c|d)/");
+    const { value: value1 } = generator.next();
+    expect(value1).toMatchObject({
+      value: "a",
+      index: 0,
+      children: [
+        {
+          value: "a",
+          index: 0,
+          children: [
+            {
+              value: "a",
+              index: 0,
+              children: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    const { value: value2 } = generator.next();
+    expect(value2).toMatchObject({
+      value: "b",
+      index: 1,
+      children: [
+        {
+          value: "b",
+          index: 1,
+          children: [
+            {
+              value: "b",
+              index: 0,
+              children: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    const { value: value3 } = generator.next();
+    expect(value3).toMatchObject({
+      value: "c",
+      index: 2,
+      children: [
+        {
+          value: "c",
+          index: 0,
+          children: [
+            {
+              value: "c",
+              index: 0,
+              children: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    const { value: value4 } = generator.next();
+    expect(value4).toMatchObject({
+      value: "d",
+      index: 3,
+      children: [
+        {
+          value: "d",
+          index: 1,
+          children: [
+            {
+              value: "d",
+              index: 0,
+              children: [],
+            },
+          ],
+        },
+      ],
+    });
+  });
+})

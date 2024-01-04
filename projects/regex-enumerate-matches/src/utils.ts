@@ -1,3 +1,6 @@
+import type { AstNode } from "regexp-tree/ast";
+import type { GeneratorOutput } from "./enumerateMatches";
+
 export const getNResults = <T>(gen: Generator<T>, n = Infinity) => {
   let i = 0;
   let hasWork = true;
@@ -86,21 +89,28 @@ export const Generator = {
     })();
   },
 
-  repeat: function* (gen: Generator<string>, from: number, to = Infinity) {
+  repeat: function* (
+    gen: Generator<GeneratorOutput>,
+    node: AstNode,
+    from: number,
+    to = Infinity
+  ): Generator<GeneratorOutput> {
+    let index = 0;
     if (from === 0) {
-      yield "";
+      yield { value: "", node, index, children: [] };
     }
 
     const results = [];
     for (const x of gen) {
-      yield x;
+      index++;
+      yield { value: x.value, node, index, children: [x] };
       results.push(x);
     }
 
     let i = 2;
     while (i <= to) {
       for (const x of results) {
-        yield x.repeat(i);
+        yield { value: x.value.repeat(i), node, index, children: [x] };
       }
       i++;
     }

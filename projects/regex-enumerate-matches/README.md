@@ -48,4 +48,8 @@ Remaining nodes:
 - [x] Backreference
 - [x] Group
 - [x] Repetition
-- [ ] Quantifier
+- [x] Quantifier
+
+Todo:
+- [ ] Fix repeater nodes that contain branches (e.g. `/(a|b){5}/`)
+- [ ] Fix e-mail test

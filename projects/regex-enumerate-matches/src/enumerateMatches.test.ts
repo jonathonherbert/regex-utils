@@ -78,6 +78,12 @@ describe("possibilities", () => {
     ]);
   });
 
+  // test.only("quantifiers", () => {
+  //   assertRegexPossibilities("/a{5}/", [
+  //     "aaaaa",
+  //   ]);
+  // })
+
   test("example 1", () => {
     assertRegexPossibilities("/Camilla Parker ?-?Bowles/", [
       "Camilla ParkerBowles",
@@ -106,14 +112,14 @@ describe("possibilities", () => {
     );
   });
 
-  // test('example 3', () => {
-  //   assertRegexPossibilities(
-  //     "/^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/",
-  //     [
+  test.only('example 3', () => {
+    assertRegexPossibilities(
+      "/^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/",
+      [
 
-  //     ]
-  //   );
-  // })
+      ]
+    );
+  })
 });
 
 describe("combineOrderedSources", () => {

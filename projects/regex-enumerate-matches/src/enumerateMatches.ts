@@ -5,7 +5,14 @@ import type {
   AstClassMap,
   AstRegExp,
 } from "regexp-tree/ast";
-import { Generator, getCharRange, getGeneratorOutputFromBranchNode, getGeneratorOutputFromLeafNode, getGroupId, getNResults } from "./utils";
+import {
+  Generator,
+  getCharRange,
+  getGeneratorOutputFromBranchNode,
+  getGeneratorOutputFromLeafNode,
+  getGroupId,
+  getNResults,
+} from "./utils";
 
 export type MatchContext = {
   groups: Record<string, string>;
@@ -25,7 +32,8 @@ export type GeneratorOutput = {
 export const generateMatches = (expr: string): Generator<string> =>
   Generator.map(
     (result) => result.value,
-    getGeneratorFromNode(parse(expr, { allowGroupNameDuplicates: false }))
+    console.log(parse(expr, { allowGroupNameDuplicates: false })) ||
+      getGeneratorFromNode(parse(expr, { allowGroupNameDuplicates: false }))
   );
 
 /**
@@ -87,7 +95,11 @@ const generators: Generators = {
       sources
     );
   },
-  Assertion: (node) => noopIter(node),
+  Assertion: (node) => {
+    // These are effectively no-ops.
+    const source = Generator.fromArray([]);
+    return getGeneratorOutputFromLeafNode(node, source);
+  },
   CharacterClass: (node, context): Generator<GeneratorOutput> => {
     const source = Generator.concat(
       node.expressions.map((expr) =>
@@ -149,8 +161,9 @@ const generators: Generators = {
       to
     );
   },
+  // These only seem to be attached to Range nodes in practice?
   Quantifier: (node, _) => noopIter(node),
-} as const;
+};
 
 const noopIter = (node: AstNode) => {
   console.log(`No generator for ${node.type}`);

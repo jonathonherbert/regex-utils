@@ -1,6 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import { combineOrderedSources, enumerateMatches, generateMatchesViz } from "./enumerateMatches.ts";
 import { Generator, getNResults } from "./utils.ts";
+import { parse } from "regexp-tree";
 
 const assertRegexPossibilities = (
   regex: string,
@@ -226,7 +227,7 @@ describe("combineOrderedSources", () => {
 
 describe("generateMatchesViz", () => {
   test("disjunct groups containing disjunct", () => {
-    const generator = generateMatchesViz("/(a|b)|(c|d)/");
+    const generator = generateMatchesViz(parse("/(a|b)|(c|d)/", { allowGroupNameDuplicates: false }));
     const { value: value1 } = generator.next();
     expect(value1).toMatchObject({
       value: "a",

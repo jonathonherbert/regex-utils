@@ -1,9 +1,5 @@
 import { parse } from "regexp-tree";
-import type {
-  AstNode,
-  AstClass,
-  AstClassMap,
-} from "regexp-tree/ast";
+import type { AstNode, AstClass, AstClassMap, AstRegExp } from "regexp-tree/ast";
 import { Generator, getCharRange, getGroupId, getNResults } from "./utils";
 
 export type MatchContext = {
@@ -33,8 +29,8 @@ export const generateMatches = (expr: string): Generator<string> =>
  * expressions. The output contains information about the nodes that yielded the
  * result.
  */
-export const generateMatchesViz = (expr: string): Generator<GeneratorOutput> =>
-  getGeneratorFromNode(parse(expr, { allowGroupNameDuplicates: false }));
+export const generateMatchesViz = (node: AstRegExp): Generator<GeneratorOutput> =>
+  getGeneratorFromNode(node);
 
 /**
  * Enumerate all possible matches for the given regular expression.
@@ -78,10 +74,12 @@ const generators: Generators = {
   RegExp: (node, context) => {
     return Generator.map(
       (r) => ({
-        ...r,
         value: stripEmptyBackreferences(context)(
           addBackreferencesFromGroups(context)(r.value)
         ),
+        index: 0,
+        children: [r],
+        node
       }),
       getGeneratorFromNode(node.body, context)
     );
@@ -91,7 +89,7 @@ const generators: Generators = {
       (results) => ({
         value: results.map((_) => _.value).join(""),
         index: 0,
-        children: results.map((_) => _.children).flat(),
+        children: results,
         node,
       }),
       combineOrderedSources(
@@ -134,9 +132,12 @@ const generators: Generators = {
       return generator;
     }
 
-    return Generator.forEach((result) => {
-      context.groups[node.number.toString()] = result.value;
-    }, generator);
+    return Generator.map(
+      (output) => ({ value: output.value, index: 0, node, children: [output] }),
+      Generator.forEach((result) => {
+        context.groups[node.number.toString()] = result.value;
+      }, generator)
+    );
   },
   Repetition: (node, context): Generator<GeneratorOutput> => {
     const { from, to } = (() => {

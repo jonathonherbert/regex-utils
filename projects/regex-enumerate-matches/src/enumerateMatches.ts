@@ -4,6 +4,7 @@ import type {
   AstClass,
   AstClassMap,
   AstRegExp,
+  Char,
 } from "regexp-tree/ast";
 import {
   Generator,
@@ -19,10 +20,10 @@ export type MatchContext = {
   backreferences: Record<string, string>;
 };
 
-export type GeneratorOutput = {
+export type NodeOutput = {
   node: AstNode;
   value: string;
-  children: GeneratorOutput[];
+  children: NodeOutput[];
 };
 
 /**
@@ -32,8 +33,7 @@ export type GeneratorOutput = {
 export const generateMatches = (expr: string): Generator<string> =>
   Generator.map(
     (result) => result.value,
-    console.log(parse(expr, { allowGroupNameDuplicates: false })) ||
-      getGeneratorFromNode(parse(expr, { allowGroupNameDuplicates: false }))
+    getGeneratorFromNode(parse(expr, { allowGroupNameDuplicates: false }))
   );
 
 /**
@@ -41,9 +41,8 @@ export const generateMatches = (expr: string): Generator<string> =>
  * expressions. The output contains information about the nodes that yielded the
  * result.
  */
-export const generateMatchesViz = (
-  node: AstRegExp
-): Generator<GeneratorOutput> => getGeneratorFromNode(node);
+export const generateMatchesViz = (node: AstRegExp): Generator<NodeOutput> =>
+  getGeneratorFromNode(node);
 
 /**
  * Enumerate all possible matches for the given regular expression.
@@ -56,17 +55,23 @@ type Generators = {
     node: AstClassMap[C],
     m: MatchContext,
     negative?: boolean
-  ) => Generator<GeneratorOutput>;
+  ) => Generator<NodeOutput>;
 };
 
 const generators: Generators = {
-  Char: (node, _, negative = false): Generator<GeneratorOutput> => {
-    const source = Generator.fromArray(
-      getCharRange(node.codePoint, node.codePoint, negative)
-    );
+  Char: (node, _, negative = false): Generator<NodeOutput> => {
+    const { from, to } = (() => {
+      switch (node.kind) {
+        case "meta":
+          return getRangeFromMetaChar(node);
+        default:
+          return { from: node.codePoint, to: node.codePoint };
+      }
+    })();
+    const source = Generator.fromArray(getCharRange(from, to));
     return getGeneratorOutputFromLeafNode(node, source);
   },
-  Disjunction: (node, context): Generator<GeneratorOutput> => {
+  Disjunction: (node, context): Generator<NodeOutput> => {
     const left = getGeneratorFromNode(node.left, context);
     const right = getGeneratorFromNode(node.right, context);
     const source = Generator.concat([left, right].filter(Boolean));
@@ -81,7 +86,7 @@ const generators: Generators = {
 
     return getGeneratorOutputFromBranchNode(node, source);
   },
-  Alternative: (node, context): Generator<GeneratorOutput> => {
+  Alternative: (node, context): Generator<NodeOutput> => {
     const sources = combineOrderedSources(
       node.expressions.map((node) => getGeneratorFromNode(node, context))
     );
@@ -96,11 +101,11 @@ const generators: Generators = {
     );
   },
   Assertion: (node) => {
-    // These are effectively no-ops.
-    const source = Generator.fromArray([]);
+    // No-op for now
+    const source = Generator.fromArray([""]);
     return getGeneratorOutputFromLeafNode(node, source);
   },
-  CharacterClass: (node, context): Generator<GeneratorOutput> => {
+  CharacterClass: (node, context): Generator<NodeOutput> => {
     const source = Generator.concat(
       node.expressions.map((expr) =>
         getGeneratorFromNode(expr, context, node.negative)
@@ -109,14 +114,14 @@ const generators: Generators = {
 
     return getGeneratorOutputFromBranchNode(node, source);
   },
-  ClassRange: (node, _, negative = false): Generator<GeneratorOutput> => {
+  ClassRange: (node, _, negative = false): Generator<NodeOutput> => {
     const source = Generator.fromArray(
       getCharRange(node.from.codePoint, node.to.codePoint, negative)
     );
 
     return getGeneratorOutputFromLeafNode(node, source);
   },
-  Backreference: (node, context): Generator<GeneratorOutput> => {
+  Backreference: (node, context): Generator<NodeOutput> => {
     const source = Generator.forEach((result) => {
       // Only apply a backreference if a matching group already exists - see
       // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Regular_expressions/Backreference#description
@@ -127,7 +132,7 @@ const generators: Generators = {
 
     return getGeneratorOutputFromLeafNode(node, source);
   },
-  Group: (node, context): Generator<GeneratorOutput> => {
+  Group: (node, context): Generator<NodeOutput> => {
     const generator = getGeneratorFromNode(node.expression, context);
 
     if (!node.capturing) {
@@ -140,7 +145,7 @@ const generators: Generators = {
 
     return getGeneratorOutputFromBranchNode(node, source);
   },
-  Repetition: (node, context): Generator<GeneratorOutput> => {
+  Repetition: (node, context): Generator<NodeOutput> => {
     const { from, to } = (() => {
       switch (node.quantifier.kind) {
         case "Range":
@@ -176,7 +181,7 @@ function getGeneratorFromNode<T extends AstNode>(
   // backreference data
   context: MatchContext = { groups: {}, backreferences: {} },
   negative = false
-): Generator<GeneratorOutput> {
+): Generator<NodeOutput> {
   if (!node) {
     return Generator.fromArray([]);
   }
@@ -265,7 +270,7 @@ export function* combineOrderedSources<T>(
 }
 
 export const addBackreferencesFromGroups =
-  (context: MatchContext) => (result: GeneratorOutput) => ({
+  (context: MatchContext) => (result: NodeOutput) => ({
     node: result.node,
     children: result.children,
     value: Object.entries(context.groups).reduce(
@@ -278,7 +283,7 @@ export const addBackreferencesFromGroups =
   });
 
 export const stripEmptyBackreferences =
-  (context: MatchContext) => (result: GeneratorOutput) => ({
+  (context: MatchContext) => (result: NodeOutput) => ({
     node: result.node,
     children: result.children,
     value: Object.entries(context.groups).reduce(
@@ -286,3 +291,12 @@ export const stripEmptyBackreferences =
       result.value
     ),
   });
+
+const getRangeFromMetaChar = (node: Char): { from: number; to: number } => {
+  switch (node.value) {
+    case ".":
+      return { from: 32, to: 126 };
+    default:
+      return { from: node.codePoint, to: node.codePoint };
+  }
+};

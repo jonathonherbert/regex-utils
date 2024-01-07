@@ -14,6 +14,18 @@ const assertRegexPossibilities = (
 ) => expect(enumerateMatches(regex, limit)).toEqual(expected);
 
 describe("possibilities", () => {
+  test("char", () => {
+    assertRegexPossibilities("/a/", ["a"]);
+  });
+
+  test("char meta", () => {
+    const results = enumerateMatches("/./", Infinity);
+    expect(results.length).toBe(95);
+    results.forEach((result) => {
+      expect(result.length).toBe(1);
+    });
+  });
+
   test("disjunct", () => {
     assertRegexPossibilities("/a|b|c/", ["a", "b", "c"]);
   });
@@ -81,7 +93,7 @@ describe("possibilities", () => {
   // test.only("quantifiers", () => {
   //   assertRegexPossibilities("/a{5}/", [
   //     "aaaaa",
-//   ]);
+  //   ]);
   // })
 
   test("example 1", () => {
@@ -112,14 +124,17 @@ describe("possibilities", () => {
     );
   });
 
-  test('example 3', () => {
-    assertRegexPossibilities(
-      "/^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/",
-      [
+  test("assertions", () => {
+    assertRegexPossibilities("/^aaa$/", ["aaa"]);
+  });
 
-      ]
+  test("example 3", () => {
+    assertRegexPossibilities(
+      "/^[a-zA-Z0-9.!#$%&’*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:.[a-zA-Z0-9-]+)*$/",
+      ["a@a", "b@a", "c@a", "d@a", "e@a", "f@a", "g@a", "h@a", "i@a", "j@a"],
+      10
     );
-  })
+  });
 });
 
 describe("combineOrderedSources", () => {

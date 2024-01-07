@@ -7,7 +7,7 @@ import {
   getCombinations,
   getRange,
 } from "./utils";
-import { GeneratorOutput } from "./enumerateMatches";
+import { NodeOutput } from "./enumerateMatches";
 
 describe("ranges", () => {
   test("char range", () => {
@@ -23,7 +23,7 @@ describe("Generator", () => {
     const noopNode = {} as any;
     const generateOutputs = (arr: string[]) =>
       getGeneratorOutputFromLeafNode(noopNode, Generator.fromArray(arr));
-    const getAllValues = (source: Generator<GeneratorOutput>) =>
+    const getAllValues = (source: Generator<NodeOutput>) =>
       getNResults(source).map((r) => r.value);
 
     test("0-1", () => {

@@ -21,25 +21,31 @@ describe("ranges", () => {
 describe("Generator", () => {
   describe("repeat", () => {
     const noopNode = {} as any;
-    const generatesAs = () =>
-      getGeneratorOutputFromLeafNode(noopNode, Generator.fromArray(["a"]));
+    const generateOutputs = (arr: string[]) =>
+      getGeneratorOutputFromLeafNode(noopNode, Generator.fromArray(arr));
     const getAllValues = (source: Generator<GeneratorOutput>) =>
       getNResults(source).map((r) => r.value);
 
     test("0-1", () => {
-      const source = Generator.repeat(generatesAs(), noopNode, 0, 1);
+      const source = Generator.repeat(generateOutputs(["a"]), noopNode, 0, 1);
 
       expect(getAllValues(source)).toEqual(["", "a"]);
     });
 
     test("1-2", () => {
-      const source = Generator.repeat(generatesAs(), noopNode, 1, 2);
+      const source = Generator.repeat(generateOutputs(["a"]), noopNode, 1, 2);
 
       expect(getAllValues(source)).toEqual(["a", "aa"]);
     });
 
+    test("2", () => {
+      const source = Generator.repeat(generateOutputs(["a"]), noopNode, 2, 2);
+
+      expect(getAllValues(source)).toEqual(["aa"]);
+    });
+
     test("0-many", () => {
-      const source = Generator.repeat(generatesAs(), noopNode, 0, 5);
+      const source = Generator.repeat(generateOutputs(["a"]), noopNode, 0, 5);
 
       expect(getAllValues(source)).toEqual([
         "",
@@ -52,16 +58,56 @@ describe("Generator", () => {
     });
 
     test("1-many", () => {
-      const source = Generator.repeat(generatesAs(), noopNode, 1, 5);
+      const source = Generator.repeat(generateOutputs(["a"]), noopNode, 1, 5);
 
       expect(getAllValues(source)).toEqual(["a", "aa", "aaa", "aaaa", "aaaaa"]);
     });
 
-    test("combinatorials", () => {
-      const generatesABC = getGeneratorOutputFromLeafNode(noopNode, Generator.fromArray(["a", "b", "c"]));
+    test("combinatorials 1", () => {
+      const generatesABC = getGeneratorOutputFromLeafNode(
+        noopNode,
+        Generator.fromArray(["a", "b", "c"])
+      );
       const source = Generator.repeat(generatesABC, noopNode, 1, 2);
-      expect(getAllValues(source)).toEqual(["a", "aa", "aaa", "aaaa", "aaaaa"]);
-    })
+      expect(getAllValues(source)).toEqual([
+        "a",
+        "b",
+        "c",
+        "aa",
+        "ab",
+        "ac",
+        "ba",
+        "bb",
+        "bc",
+        "ca",
+        "cb",
+        "cc",
+      ]);
+    });
+
+    test("combinatorials 2", () => {
+      const generatesABC = getGeneratorOutputFromLeafNode(
+        noopNode,
+        Generator.fromArray(["a", "b"])
+      );
+      const source = Generator.repeat(generatesABC, noopNode, 1, 3);
+      expect(getAllValues(source)).toEqual([
+        "a",
+        "b",
+        "aa",
+        "ab",
+        "ba",
+        "bb",
+        "aaa",
+        "aab",
+        "aba",
+        "abb",
+        "baa",
+        "bab",
+        "bba",
+        "bbb"
+      ]);
+    });
   });
 });
 
@@ -71,7 +117,9 @@ describe("getPermutations", () => {
     elements: T[],
     expected: T[][]
   ) => {
-    const results = getNResults(getCombinations(length, Generator.fromArray(elements)));
+    const results = getNResults(
+      getCombinations(length, Generator.fromArray(elements))
+    );
     expect(results).toEqual(expected);
   };
   test("generate permutations 1", () => {

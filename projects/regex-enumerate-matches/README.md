@@ -51,5 +51,5 @@ Remaining nodes:
 - [x] Quantifier
 
 Todo:
-- [ ] Fix repeater nodes that contain branches (e.g. `/(a|b){5}/`)
+- [x] Fix repeater nodes that contain branches (e.g. `/(a|b){5}/`)
 - [ ] Fix e-mail test

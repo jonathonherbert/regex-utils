@@ -97,24 +97,43 @@ export const Generator = {
   ): Generator<GeneratorOutput> {
     if (from === 0) {
       yield { value: "", node, children: [] };
+      from++;
     }
 
-    const results: GeneratorOutput[] = [];
-    for (const x of gen) {
-      const result = { value: x.value, node, children: [x] };
-      yield result;
-      results.push(result);
+    let elements: GeneratorOutput[] | undefined = undefined;
+    for (let curFrom = from; curFrom <= to; curFrom++) {
+      const source = elements ? Generator.fromArray(elements) : gen;
+      const combinationsGen = getCombinations(curFrom, source);
+
+      while (true) {
+        const { value, done } = combinationsGen.next();
+        if (done) {
+          elements = value;
+          break;
+        }
+        yield {
+          value: value.map((output) => output.value).join(""),
+          node,
+          children: value.flatMap((output) => output.children),
+        };
+      }
     }
   },
 };
 
+/**
+ * Find all combinations of a given length with elements from the given
+ * generator.
+ *
+ * The final return gives the completed list of elements.
+ */
 export function* getCombinations<T>(
   length: number,
   elementsGen: Generator<T>
-): Generator<T[]> {
+): Generator<T[], T[]> {
   const { value, done } = elementsGen.next();
   if (done) {
-    return;
+    return [];
   }
   const indexes = Array(length).fill(0);
   const elements: T[] = [value];
@@ -129,18 +148,17 @@ export function* getCombinations<T>(
 
     for (let i = length - 1; ; i--) {
       if (i < 0) {
-        return;
+        return elements;
       }
       indexes[i]++;
       if (indexes[i] === elements.length) {
-        console.log(`reset `, i);
         indexes[i] = 0;
       } else {
         break;
       }
     }
-  },
-};
+  }
+}
 
 export const getGroupId = (groupNumber: string) => `$__GROUP${groupNumber}__$`;
 

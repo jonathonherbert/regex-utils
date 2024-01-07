@@ -105,13 +105,39 @@ export const Generator = {
       yield result;
       results.push(result);
     }
+  },
+};
 
-    let i = 2;
-    while (i <= to) {
-      for (const x of results) {
-        yield { value: x.value.repeat(i), node, children: [x] };
+export function* getCombinations<T>(
+  length: number,
+  elementsGen: Generator<T>
+): Generator<T[]> {
+  const { value, done } = elementsGen.next();
+  if (done) {
+    return;
+  }
+  const indexes = Array(length).fill(0);
+  const elements: T[] = [value];
+
+  while (true) {
+    yield indexes.map((i) => elements[i]);
+
+    const { value, done } = elementsGen.next();
+    if (!done) {
+      elements.push(value);
+    }
+
+    for (let i = length - 1; ; i--) {
+      if (i < 0) {
+        return;
       }
-      i++;
+      indexes[i]++;
+      if (indexes[i] === elements.length) {
+        console.log(`reset `, i);
+        indexes[i] = 0;
+      } else {
+        break;
+      }
     }
   },
 };

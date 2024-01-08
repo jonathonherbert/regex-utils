@@ -36,21 +36,3 @@ aBBc
 ```
 
 It's interesting to consider how, given a maximum output length of e.g. 50 examples, we might bias the examples towards traversing the breadth of the tree of possibilities, whilst still maximising the number of examples.
-
-Remaining nodes:
-- [x] Char
-- [x] Disjunction
-- [x] RegExp
-- [x] Alternative
-- [x] Assertion
-- [x] CharacterClass
-- [x] ClassRange
-- [x] Backreference
-- [x] Group
-- [x] Repetition
-- [x] Quantifier
-
-Todo:
-- [x] Fix repeater nodes that contain branches (e.g. `/(a|b){5}/`)
-- [x] Fix e-mail test
-- [ ] Fix repeater nodes introducing additional conten in char fields (e.g. `/(abcd)*/`)

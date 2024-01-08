@@ -114,7 +114,8 @@ export const Generator = {
         yield {
           value: value.map((output) => output.value).join(""),
           node,
-          children: value.flatMap((output) => output.children),
+          // Children must be unique
+          children: Array.from(new Set(value.flatMap((output) => output.children))),
         };
       }
     }

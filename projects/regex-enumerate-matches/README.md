@@ -42,7 +42,7 @@ Remaining nodes:
 - [x] Disjunction
 - [x] RegExp
 - [x] Alternative
-- [ ] Assertion
+- [x] Assertion
 - [x] CharacterClass
 - [x] ClassRange
 - [x] Backreference
@@ -52,4 +52,5 @@ Remaining nodes:
 
 Todo:
 - [x] Fix repeater nodes that contain branches (e.g. `/(a|b){5}/`)
-- [ ] Fix e-mail test
+- [x] Fix e-mail test
+- [ ] Fix repeater nodes introducing additional conten in char fields (e.g. `/(abcd)*/`)
